@@ -1,17 +1,18 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* === Compat tokens so old class names still work === */
 @theme inline {
+  --color-darkbg: #0f1115;
+  --color-lighttext: #eaeaea;
+  --color-card: #1f2430;
+  --color-primary: #3b82f6;
+
+  /* v4 defaults you already have */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
+/* Prefer dark by user setting; you can keep your media query too */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -19,8 +20,14 @@
   }
 }
 
+/* Base */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Optional: card & link helpers to match your old look */
+.card { @apply bg-card/80 rounded-lg p-4 border border-white/5; }
+a { @apply transition-colors duration-200; }
+a:hover { @apply text-primary; }
