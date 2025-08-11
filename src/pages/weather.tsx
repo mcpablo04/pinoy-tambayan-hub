@@ -1,250 +1,315 @@
 // src/pages/weather.tsx
-import { FormEvent, useMemo, useState } from "react";
+"use client";
 
-type WeatherCode =
-  | 0 | 1 | 2 | 3
-  | 45 | 48
-  | 51 | 53 | 55 | 56 | 57
-  | 61 | 63 | 65 | 66 | 67
-  | 71 | 73 | 75 | 77
-  | 80 | 81 | 82
-  | 85 | 86
-  | 95 | 96 | 99;
+import { useEffect, useMemo, useState } from "react";
 
-interface DailyUnits {
-  time: string;
-  weathercode: string;
-  temperature_2m_max: string;
-  temperature_2m_min: string;
-}
+type Forecast = {
+  daily: {
+    time: string[];
+    weathercode: number[];
+    temperature_2m_max: number[];
+    temperature_2m_min: number[];
+  };
+};
 
-interface Daily {
-  time: string[];
-  weathercode: WeatherCode[];
-  temperature_2m_max: number[];
-  temperature_2m_min: number[];
-}
-
-interface WeatherResponse {
-  daily_units: DailyUnits;
-  daily: Daily;
-  timezone: string;
-}
-
-interface City {
+type City = {
   name: string;
   country?: string;
   lat: number;
   lon: number;
-}
-
-// Minimal PH-first city index (add more if you like)
-const CITY_INDEX: City[] = [
-  { name: "Manila", country: "PH", lat: 14.5995, lon: 120.9842 },
-  { name: "Quezon City", country: "PH", lat: 14.6760, lon: 121.0437 },
-  { name: "Cebu", country: "PH", lat: 10.3157, lon: 123.8854 },
-  { name: "Davao", country: "PH", lat: 7.1907, lon: 125.4553 },
-  { name: "Baguio", country: "PH", lat: 16.4023, lon: 120.5960 },
-  { name: "Iloilo", country: "PH", lat: 10.7202, lon: 122.5621 },
-  { name: "Cagayan de Oro", country: "PH", lat: 8.4542, lon: 124.6319 },
-  { name: "General Santos", country: "PH", lat: 6.1164, lon: 125.1716 },
-];
-
-const WMO: Record<WeatherCode, { e: string; t: string }> = {
-  0: { e: "☀️", t: "Clear sky" },
-  1: { e: "🌤️", t: "Mainly clear" },
-  2: { e: "⛅", t: "Partly cloudy" },
-  3: { e: "☁️", t: "Overcast" },
-  45: { e: "🌫️", t: "Fog" },
-  48: { e: "🌫️", t: "Depositing rime fog" },
-  51: { e: "🌦️", t: "Drizzle: light" },
-  53: { e: "🌦️", t: "Drizzle: moderate" },
-  55: { e: "🌧️", t: "Drizzle: dense" },
-  56: { e: "🌧️", t: "Freezing drizzle: light" },
-  57: { e: "🌧️", t: "Freezing drizzle: dense" },
-  61: { e: "🌦️", t: "Rain: slight" },
-  63: { e: "🌧️", t: "Rain: moderate" },
-  65: { e: "🌧️", t: "Rain: heavy" },
-  66: { e: "🌨️", t: "Freezing rain: light" },
-  67: { e: "🌨️", t: "Freezing rain: heavy" },
-  71: { e: "🌨️", t: "Snow fall: slight" },
-  73: { e: "🌨️", t: "Snow fall: moderate" },
-  75: { e: "❄️", t: "Snow fall: heavy" },
-  77: { e: "🌨️", t: "Snow grains" },
-  80: { e: "🌦️", t: "Rain showers: slight" },
-  81: { e: "🌧️", t: "Rain showers: moderate" },
-  82: { e: "⛈️", t: "Rain showers: violent" },
-  85: { e: "🌨️", t: "Snow showers: slight" },
-  86: { e: "🌨️", t: "Snow showers: heavy" },
-  95: { e: "⛈️", t: "Thunderstorm" },
-  96: { e: "⛈️", t: "Thunderstorm w/ slight hail" },
-  99: { e: "⛈️", t: "Thunderstorm w/ heavy hail" },
 };
 
-function wc(code: WeatherCode): { e: string; t: string } {
-  return WMO[code] ?? { e: "☁️", t: "Cloudy" };
+const PH_CITIES: City[] = [
+  { name: "Manila", lat: 14.5995, lon: 120.9842 },
+  { name: "Quezon City", lat: 14.676, lon: 121.0437 },
+  { name: "Cebu", lat: 10.3157, lon: 123.8854 },
+  { name: "Davao", lat: 7.1907, lon: 125.4553 },
+  { name: "Baguio", lat: 16.4023, lon: 120.596 },
+  { name: "Iloilo", lat: 10.7202, lon: 122.5621 },
+  { name: "Cagayan de Oro", lat: 8.4542, lon: 124.6319 },
+];
+
+// WMO → emoji + label
+const WMO: Record<number, { t: string; e: string }> = {
+  0: { t: "Clear", e: "☀️" },
+  1: { t: "Mainly clear", e: "🌤️" },
+  2: { t: "Partly cloudy", e: "⛅" },
+  3: { t: "Cloudy", e: "☁️" },
+  45: { t: "Fog", e: "🌫️" },
+  48: { t: "Rime fog", e: "🌫️" },
+  51: { t: "Light drizzle", e: "🌦️" },
+  53: { t: "Drizzle", e: "🌦️" },
+  55: { t: "Heavy drizzle", e: "🌧️" },
+  61: { t: "Light rain", e: "🌧️" },
+  63: { t: "Rain", e: "🌧️" },
+  65: { t: "Heavy rain", e: "🌧️" },
+  66: { t: "Freezing rain", e: "🌧️" },
+  67: { t: "Freezing rain", e: "🌧️" },
+  71: { t: "Snow", e: "❄️" },
+  73: { t: "Snow", e: "❄️" },
+  75: { t: "Snow", e: "❄️" },
+  77: { t: "Snow grains", e: "❄️" },
+  80: { t: "Light showers", e: "🌦️" },
+  81: { t: "Mod. showers", e: "🌦️" },
+  82: { t: "Heavy showers", e: "🌧️" },
+  85: { t: "Snow showers", e: "❄️" },
+  86: { t: "Snow showers", e: "❄️" },
+  95: { t: "Thunderstorm", e: "⛈️" },
+  96: { t: "Thunder w/ hail", e: "⛈️" },
+  99: { t: "Thunder w/ hail", e: "⛈️" },
+};
+
+const dayShort = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { weekday: "short" });
+
+async function geocodeCity(q: string): Promise<City | null> {
+  if (!q.trim()) return null;
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+    q
+  )}&count=5&language=en&format=json&countries=PH`;
+  const r = await (await fetch(url)).json();
+  const hit = (r?.results as any[])?.[0];
+  return hit
+    ? { name: hit.name, country: hit.country, lat: hit.latitude, lon: hit.longitude }
+    : null;
 }
 
-async function fetchWeather(lat: number, lon: number): Promise<WeatherResponse> {
-  const qs = new URLSearchParams({
-    latitude: String(lat),
-    longitude: String(lon),
-    daily: "weathercode,temperature_2m_max,temperature_2m_min",
-    timezone: "auto",
-  });
+async function reverseGeocode(lat: number, lon: number): Promise<City | null> {
+  const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=en&format=json`;
+  const r = await (await fetch(url)).json();
+  const hit = (r?.results as any[])?.[0];
+  return hit ? { name: hit.name, country: hit.country, lat, lon } : null;
+}
 
-  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${qs.toString()}`);
-  if (!res.ok) throw new Error("Failed to fetch weather");
-  return (await res.json()) as WeatherResponse;
+async function fetchForecast(lat: number, lon: number): Promise<Forecast> {
+  const p = [
+    `latitude=${lat}`,
+    `longitude=${lon}`,
+    `daily=weathercode,temperature_2m_max,temperature_2m_min`,
+    `timezone=auto`,
+  ].join("&");
+  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${p}`);
+  if (!res.ok) throw new Error("Forecast fetch failed");
+  return res.json();
+}
+
+// IP fallback for HTTP or blocked geolocation (approx city)
+async function ipFallback(): Promise<City | null> {
+  try {
+    const r = await (await fetch("https://ipapi.co/json/")).json();
+    if (!r || !r.latitude || !r.longitude) return null;
+    return { name: r.city || "Your location", country: r.country_name, lat: r.latitude, lon: r.longitude };
+  } catch {
+    return null;
+  }
 }
 
 export default function WeatherPage() {
-  const [query, setQuery] = useState("");
-  const [pickedCity, setPickedCity] = useState<City | null>(null);
-  const [data, setData] = useState<WeatherResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [city, setCity] = useState<City>(PH_CITIES[0]);
+  const [geoErr, setGeoErr] = useState<string | null>(null);
 
-  const suggestions = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return CITY_INDEX;
-    return CITY_INDEX.filter((c) => c.name.toLowerCase().includes(q));
-  }, [query]);
+  const [data, setData] = useState<Forecast | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const onSearch = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!suggestions.length) return;
-    const city = suggestions[0];
-    await loadCity(city);
+  useEffect(() => {
+    (async () => {
+      try {
+        const f = await fetchForecast(city.lat, city.lon);
+        setData(f);
+      } finally {
+        setInitialLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (initialLoading) return;
+    (async () => {
+      setRefreshing(true);
+      try {
+        const f = await fetchForecast(city.lat, city.lon);
+        setData(f);
+      } finally {
+        setRefreshing(false);
+      }
+    })();
+  }, [city.lat, city.lon, initialLoading]);
+
+  const handleSearch = async () => {
+    const found = await geocodeCity(search);
+    if (found) setCity(found);
   };
 
-  async function loadCity(city: City) {
-    try {
-      setErr(null);
-      setLoading(true);
-      setPickedCity(city);
-      const res = await fetchWeather(city.lat, city.lon);
-      setData(res);
-    } catch (error) {
-      setErr("Could not load weather right now.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function useMyLocation() {
+  const useMyLocation = () => {
+    setGeoErr(null);
     if (!navigator.geolocation) {
-      setErr("Geolocation not supported.");
+      // quick IP fallback
+      ipFallback().then((c) => c && setCity(c));
       return;
     }
-    setErr(null);
-    setLoading(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const city: City = {
-          name: "Your location",
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-        };
-        setPickedCity(city);
-        try {
-          const res = await fetchWeather(city.lat, city.lon);
-          setData(res);
-        } catch {
-          setErr("Could not load weather for your location.");
-        } finally {
-          setLoading(false);
-        }
+        const named =
+          (await reverseGeocode(pos.coords.latitude, pos.coords.longitude)) ||
+          (await ipFallback()) || // if reverse geocode fails, use IP
+          { name: "Your location", lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setCity(named);
       },
-      () => {
-        setErr("We couldn't access your location.");
-        setLoading(false);
-      }
+      async (err) => {
+        setGeoErr("Precise location blocked. Using approximate location.");
+        const c = await ipFallback();
+        if (c) setCity(c);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
-  }
+  };
+
+  const days = useMemo(() => {
+    if (!data) return [];
+    const rows = [];
+    for (let i = 0; i < data.daily.time.length; i++) {
+      const code = data.daily.weathercode[i] ?? 0;
+      const meta = WMO[code] ?? { t: "—", e: "🔆" };
+      rows.push({
+        key: data.daily.time[i],
+        label: dayShort(data.daily.time[i]),
+        emoji: meta.e,
+        text: meta.t,
+        tMax: Math.round(data.daily.temperature_2m_max[i]),
+        tMin: Math.round(data.daily.temperature_2m_min[i]),
+      });
+    }
+    return rows;
+  }, [data]);
 
   return (
-    <div className="pt-16 bg-darkbg text-lighttext min-h-screen px-4">
-      <h1 className="text-3xl font-bold mb-6">Weather</h1>
+    <div className="pt-16 min-h-screen bg-darkbg text-lighttext overflow-x-hidden">
+      <div className="w-full max-w-6xl mx-auto px-4 md:px-6">
+        <h1 className="text-3xl font-bold mb-2">Weather</h1>
+        <p className="text-gray-400 mb-5">
+          7-day forecast powered by Open-Meteo. PH results are prioritized.
+        </p>
 
-      {/* Search */}
-      <form onSubmit={onSearch} className="max-w-6xl mx-auto flex gap-3 mb-6">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search city (e.g., Cebu, Davao, Baguio)"
-          className="flex-1 p-3 rounded-md bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <button
-          type="submit"
-          className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-500"
+        {/* Search / actions */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="flex-1">
+            <label htmlFor="q" className="sr-only">
+              Search city
+            </label>
+            <input
+              id="q"
+              type="text"
+              placeholder="Search city (e.g., Cebu, Davao, Baguio)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="w-full rounded-md bg-gray-700/80 text-white placeholder-gray-400 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="flex gap-2 w-full md:w-auto">
+            <button
+              onClick={handleSearch}
+              className="flex-1 md:flex-none px-4 py-3 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition"
+            >
+              Search
+            </button>
+            <button
+              onClick={useMyLocation}
+              className="flex-1 md:flex-none px-4 py-3 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-200 transition"
+            >
+              Use my location
+            </button>
+          </div>
+        </div>
+
+        {/* Chips: full-bleed scroll with snap, no right cut */}
+        <div className="-mx-4 px-4 mt-4 overflow-x-auto no-scrollbar snap-x snap-mandatory">
+          <div className="flex gap-2">
+            {PH_CITIES.map((c) => (
+              <button
+                key={c.name}
+                onClick={() => setCity(c)}
+                className={`shrink-0 px-3 py-1.5 rounded-full border whitespace-nowrap snap-start ${
+                  c.name === city.name
+                    ? "bg-blue-600 border-blue-500 text-white"
+                    : "bg-gray-800/70 border-gray-700 text-gray-200 hover:bg-gray-700"
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Location line */}
+        <div className="mt-6 mb-3 flex items-center gap-3">
+          <h2 className="text-lg font-semibold">
+            {city.name}{" "}
+            {city.country ? (
+              <span className="text-gray-400">• {city.country}</span>
+            ) : (
+              <span className="text-gray-400">• Philippines</span>
+            )}
+          </h2>
+          {refreshing && (
+            <span className="inline-flex items-center gap-2 text-sm text-gray-400">
+              <span className="w-3 h-3 rounded-full border-2 border-gray-500 border-t-transparent animate-spin" />
+              Updating…
+            </span>
+          )}
+        </div>
+        {geoErr && <p className="text-amber-400 text-sm mb-3">{geoErr}</p>}
+
+        {/* Forecast grid */}
+{initialLoading ? (
+  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
+    {Array.from({ length: 7 }).map((_, i) => (
+      <div key={i} className="min-h-[160px] rounded-lg bg-gray-800/50 animate-pulse min-w-0" />
+    ))}
+  </div>
+) : days.length ? (
+  <div className="relative">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
+      {days.map((d) => (
+        <div
+          key={d.key}
+          className="rounded-lg bg-gray-800/60 border border-white/5 p-4 min-h-[160px] min-w-0"
         >
-          Search
-        </button>
-        <button
-          type="button"
-          onClick={useMyLocation}
-          className="px-4 py-2 rounded-md bg-gray-700 text-gray-200 hover:bg-gray-600"
-        >
-          Use my location
-        </button>
-      </form>
+          <div className="text-xs text-gray-400 mb-2">{d.label}</div>
+          <div className="flex items-start gap-2 mb-2 min-w-0">
+            <span className="text-3xl leading-none shrink-0">{d.emoji}</span>
 
-      {/* Selected city label */}
-      <div className="max-w-6xl mx-auto mb-4 text-sm text-gray-400">
-        {pickedCity ? (
-          <>Forecast for <span className="text-gray-200">{pickedCity.name}</span></>
-        ) : (
-          <>Pick a city or use your location.</>
-        )}
-      </div>
-
-      {/* Forecast grid */}
-      <div className="max-w-6xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        {loading && <div className="text-gray-400">Loading…</div>}
-        {err && <div className="text-red-400">{err}</div>}
-        {!loading && !err && data && data.daily.time.map((day, i) => (
-          <div
-            key={day}
-            className="bg-gray-800 rounded-lg p-4 flex flex-col justify-between shadow"
-          >
-            <div className="text-sm text-gray-400">
-              {new Date(day).toLocaleDateString(undefined, { weekday: "short" })}
-            </div>
-
-            <div className="my-3 text-center">
-              <div className="text-4xl">{wc(data.daily.weathercode[i]).e}</div>
-              <div className="mt-1 text-center text-gray-200">
-                {wc(data.daily.weathercode[i]).t}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between mt-2">
-              <div className="text-sm font-semibold">
-                {Math.round(data.daily.temperature_2m_max[i])}°C
-              </div>
-              <div className="text-sm text-gray-400">
-                {Math.round(data.daily.temperature_2m_min[i])}°C
-              </div>
+            {/* Full text, no ellipsis; wraps nicely on small screens */}
+            <div className="text-sm text-gray-300 whitespace-normal break-words leading-snug min-w-0">
+              {d.text}
             </div>
           </div>
-        ))}
-      </div>
 
-      {/* Quick city suggestions */}
-      <div className="max-w-6xl mx-auto mt-8">
-        <h2 className="text-lg font-semibold mb-3">Philippine cities</h2>
-        <div className="flex flex-wrap gap-2">
-          {CITY_INDEX.map((c) => (
-            <button
-              key={`${c.name}-${c.lat}-${c.lon}`}
-              onClick={() => loadCity(c)}
-              className="px-3 py-2 rounded bg-gray-700 text-gray-200 hover:bg-gray-600"
-            >
-              {c.name}
-            </button>
-          ))}
+          <div className="text-lg font-semibold">
+            {d.tMax}°C{" "}
+            <span className="text-sm text-gray-400 ml-1">{d.tMin}°C</span>
+          </div>
         </div>
+      ))}
+    </div>
+
+    {refreshing && (
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="rounded-xl bg-black/30 px-3 py-2">
+          <div className="w-6 h-6 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
+        </div>
+      </div>
+    )}
+  </div>
+) : (
+  <p className="text-gray-400">No forecast available.</p>
+)}
+
+        <div className="h-8" />
       </div>
     </div>
   );
