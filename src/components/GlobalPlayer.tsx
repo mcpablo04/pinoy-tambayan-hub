@@ -1,83 +1,78 @@
-// src/components/GlobalPlayer.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/router";
+import { useEffect } from "react";
+import { useRouter } from "next/router"; // pages-router
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import RadioPlayer from "./RadioPlayer";
 import { usePlayer } from "../context/PlayerContext";
 
 export default function GlobalPlayer() {
-  const { station, next, prev, setStation } = usePlayer();
+  const { station, next, prev, setStation, showUI, setShowUI } = usePlayer();
   const router = useRouter();
 
-  // showUI is true only on /radio or if user manually toggles
-  const [showUI, setShowUI] = useState(false);
-
-  // on first mount, decide based on current path
+  // Show only on /radio by default
   useEffect(() => {
     setShowUI(router.pathname === "/radio");
-  }, [router.pathname]);
+  }, [router.pathname, setShowUI]);
 
-  // on every route change, show only if the target is /radio
+  // Keep in sync on client-side route changes
   useEffect(() => {
-    const handleRouteChange = (url: string) => {
-      setShowUI(url === "/radio");
-    };
+    const handleRouteChange = (url: string) => setShowUI(url === "/radio");
     router.events.on("routeChangeComplete", handleRouteChange);
-    return () => {
-      router.events.off("routeChangeComplete", handleRouteChange);
-    };
-  }, [router.events]);
+    return () => router.events.off("routeChangeComplete", handleRouteChange);
+  }, [router.events, setShowUI]);
 
-  // wrapper classes
+  // Use side insets so it never overflows small screens
   const wrapperClass = showUI
-    ? "fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-900 bg-opacity-90 p-4 rounded-xl shadow-xl flex items-center gap-4 max-w-xl w-full z-50"
+    ? "fixed bottom-4 inset-x-4 z-50 bg-gray-900/90 p-4 rounded-xl shadow-xl flex items-center gap-4 max-w-xl mx-auto"
     : "hidden";
 
   return (
     <>
       <div className={wrapperClass}>
-        {/* ← Prev */}
+        {/* Prev */}
         <button
           onClick={() => setStation(prev)}
           className="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition"
+          aria-label="Previous station"
         >
           <ChevronLeft className="w-5 h-5 text-white" />
         </button>
 
         {/* Station info + controls */}
-        <div className="flex-1 flex flex-col">
-          <h2 className="text-lg font-semibold text-white mb-1">
+        <div className="flex-1 flex flex-col min-w-0">
+          <h2 className="text-white text-sm sm:text-base font-semibold mb-1 truncate">
             {station.name}
           </h2>
-          {/* embed RadioPlayer but hide its own title */}
+          {/* Reuse RadioPlayer controls but hide its title */}
           <RadioPlayer station={station} hideTitle />
         </div>
 
-        {/* Next → */}
+        {/* Next */}
         <button
           onClick={() => setStation(next)}
           className="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition"
+          aria-label="Next station"
         >
           <ChevronRight className="w-5 h-5 text-white" />
         </button>
 
-        {/* Hide link */}
+        {/* Hide button (keeps audio playing; just hides UI) */}
         <button
           onClick={() => setShowUI(false)}
-          className="ml-4 text-sm text-red-400 hover:underline"
+          className="ml-2 text-xs text-red-400 hover:underline"
         >
           Hide
         </button>
       </div>
 
-      {/* Show button when hidden */}
+      {/* Show button when hidden (UI toggle only) */}
       {!showUI && (
         <button
           onClick={() => setShowUI(true)}
           className="fixed bottom-4 right-4 bg-blue-600 p-3 rounded-full shadow-lg text-white z-50"
           title="Show Player"
+          aria-label="Show Player"
         >
           🎵
         </button>
