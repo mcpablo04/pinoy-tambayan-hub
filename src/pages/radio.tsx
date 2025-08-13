@@ -1,5 +1,5 @@
 // src/pages/radio.tsx
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import StationList from "../components/StationList";
 import { usePlayer } from "../context/PlayerContext";
@@ -10,10 +10,10 @@ const PER_PAGE = 8;
 export default function RadioPage() {
   const { station: current, setStation } = usePlayer();
   const [q, setQ] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");   // ← debounce
+  const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(0);
 
-  // debounce search input ~200ms
+  // ---- debounce search input ~200ms ----
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim().toLowerCase()), 200);
     return () => clearTimeout(t);
@@ -29,17 +29,57 @@ export default function RadioPage() {
   const pageCount = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const slice = filtered.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
 
-  // Optional: simple RadioStation list JSON-LD (helps understanding the page)
+  // ---- prevent layout shrinking while typing ----
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [maxGridHeight, setMaxGridHeight] = useState(0);
+
+  // Track the largest height we've seen so far (so it never shrinks)
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+
+    const update = () => setMaxGridHeight((m) => Math.max(m, el.offsetHeight));
+    update();
+
+    // Watch for expansion on resize/breakpoints
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    window.addEventListener("resize", update);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  // Also re-check height after each filter/page change (in case it expands)
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    // wait a frame for DOM to paint
+    const id = requestAnimationFrame(() =>
+      setMaxGridHeight((m) => Math.max(m, el.offsetHeight))
+    );
+    return () => cancelAnimationFrame(id);
+  }, [slice.length, page, debouncedQ]);
+
+  const gridStyle =
+    maxGridHeight > 0 ? { minHeight: `${maxGridHeight}px` } : undefined;
+
+  // ---- optional JSON-LD ----
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    "name": "Philippine Radio Stations",
-    "hasPart": filtered.slice(0, 20).map((s) => ({
+    name: "Philippine Radio Stations",
+    hasPart: filtered.slice(0, 20).map((s) => ({
       "@type": "RadioStation",
-      "name": s.name,
-      "url": typeof window !== "undefined" ? window.location.origin + "/radio" : "https://example.com/radio",
-      "logo": s.logo
-    }))
+      name: s.name,
+      url:
+        typeof window !== "undefined"
+          ? window.location.origin + "/radio"
+          : "https://example.com/radio",
+      logo: s.logo,
+    })),
   };
 
   return (
@@ -50,7 +90,10 @@ export default function RadioPage() {
           name="description"
           content="Listen to live Philippine radio stations. Browse and play OPM hits, news, and more."
         />
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </Head>
 
       <h1 className="text-3xl font-bold mb-6 text-center md:text-left">
@@ -65,7 +108,9 @@ export default function RadioPage() {
         </div>
 
         {/* Search */}
-        <label htmlFor="station-search" className="sr-only">Search stations</label>
+        <label htmlFor="station-search" className="sr-only">
+          Search stations
+        </label>
         <input
           id="station-search"
           className="w-full md:w-96 rounded-md bg-gray-800/80 text-gray-100 placeholder-gray-400 p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -78,13 +123,13 @@ export default function RadioPage() {
         </p>
       </div>
 
-      {/* Grid */}
-      <div className="max-w-6xl mx-auto">
+      {/* Grid — minHeight locked to the largest seen so far */}
+      <div className="max-w-6xl mx-auto" ref={gridRef} style={gridStyle}>
         {slice.length ? (
           <StationList
             stations={slice}
-            currentStationId={current?.id}   // ← defensive
-            onSelect={setStation}
+            currentStationId={current?.id}
+            onSelect={(s, playNow) => setStation(s, playNow)}
           />
         ) : (
           <div className="rounded-xl bg-gray-800/50 border border-gray-700 p-8 text-center text-gray-300">
@@ -116,7 +161,7 @@ export default function RadioPage() {
         </div>
       )}
 
-      {/* AdSense block (BOTTOM). Keep spacing from grid & pagination */}
+      {/* AdSense block (BOTTOM) */}
       <div className="max-w-6xl mx-auto my-10">
         <div className="my-2 rounded-lg border border-gray-800 bg-gray-900/60 p-3 min-h-[250px] flex items-center justify-center text-gray-400 text-sm">
           {/* Replace with your AdSense code */}
