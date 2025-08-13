@@ -1,20 +1,30 @@
 // src/firebase/clientApp.ts
 import { initializeApp, getApps } from "firebase/app";
-import { getFirestore }           from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
+} from "firebase/auth";
 
+// ⬇️ keep your existing config here
 const firebaseConfig = {
-  apiKey:            "AIzaSyA9C8pmAwqx2QodJ12oImi64NVV9ZG8awo",
-  authDomain:        "pinot-tambayan.firebaseapp.com",
-  projectId:         "pinot-tambayan",
-  storageBucket:     "pinot-tambayan.appspot.com",
-  messagingSenderId: "257561318071",
-  appId:             "1:257561318071:web:8b2f3939f3de17fd55f332",
-  measurementId:     "G-EV0QKNFEJ7",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
 };
 
-if (!getApps().length) {
-  console.log("🔥 Initializing Firebase for project:", firebaseConfig.projectId);
-  initializeApp(firebaseConfig);
-}
+const app = getApps().length ? getApps()[0]! : initializeApp(firebaseConfig);
 
-export const db = getFirestore();
+// Firestore (existing)
+export const db = getFirestore(app);
+
+// Auth (new)
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+export const facebookProvider = new FacebookAuthProvider();
+// Optional: force account picker every time
+googleProvider.setCustomParameters({ prompt: "select_account" });

@@ -8,28 +8,18 @@ import { PlayerProvider } from "../context/PlayerContext";
 import { useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 
+// ⬇️ NEW: import AuthProvider
+import { AuthProvider } from "../context/AuthContext";
+
 export default function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
 
-  // Stop browsers/Next from restoring old scroll position
   useEffect(() => {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
   }, []);
 
-  /**
-   * Pages that already handle their own container/padding:
-   * - Home ("/")
-   * - Radio ("/radio")
-   * - Weather ("/weather")
-   * - News ("/news")
-   *
-   * These get a full‑width <main> so we don’t double-wrap and cause
-   * subtle right-side overflow on mobile.
-   *
-   * All other pages keep the global container & padding.
-   */
   const isSelfContained = useMemo(() => {
     const path = router.pathname;
     return (
@@ -41,19 +31,22 @@ export default function MyApp({ Component, pageProps }: AppProps) {
   }, [router.pathname]);
 
   const mainClass = isSelfContained
-    ? "flex-grow w-full"            // page controls its own container/padding
-    : "flex-grow max-w-6xl mx-auto p-6"; // global container for the rest
+    ? "flex-grow w-full"
+    : "flex-grow max-w-6xl mx-auto p-6";
 
   return (
-    <PlayerProvider>
-      <div className="bg-darkbg text-lighttext min-h-screen flex flex-col overflow-x-hidden">
-        <NavBar />
-        <main className={mainClass}>
-          <Component {...pageProps} />
-        </main>
-        <Footer />
-        <GlobalPlayer />
-      </div>
-    </PlayerProvider>
+    // ⬇️ NEW: wrap everything in AuthProvider
+    <AuthProvider>
+      <PlayerProvider>
+        <div className="bg-darkbg text-lighttext min-h-screen flex flex-col overflow-x-hidden">
+          <NavBar />
+          <main className={mainClass}>
+            <Component {...pageProps} />
+          </main>
+          <Footer />
+          <GlobalPlayer />
+        </div>
+      </PlayerProvider>
+    </AuthProvider>
   );
 }

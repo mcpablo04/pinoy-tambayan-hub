@@ -11,6 +11,7 @@ import {
   type DocumentData,
 } from "firebase/firestore";
 import { db } from "../firebase/clientApp";
+import { useAuth } from "../context/AuthContext"; // 🔹 NEW
 
 type Msg = {
   id: string;
@@ -23,6 +24,13 @@ export default function ChatBox() {
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
+
+  const { profile } = useAuth(); // 🔹 NEW
+
+  // Prefill name from signed‑in profile (don’t overwrite manual edits)
+  useEffect(() => {
+    if (profile?.displayName && !name) setName(profile.displayName);
+  }, [profile?.displayName, name]); // 🔹 NEW
 
   // Scrollable container for messages (not the page)
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -51,16 +59,11 @@ export default function ChatBox() {
   }, []);
 
   // Keep the internal list scrolled to bottom when new messages arrive
-  // without changing the PAGE scroll position.
   useLayoutEffect(() => {
     const el = listRef.current;
     if (!el) return;
-
-    // If user is already near the bottom OR it's the first load, stick to bottom.
     const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 60;
-
     if (nearBottom || !didInitialSnapshot.current) {
-      // Scroll only the list container, not the page
       el.scrollTop = el.scrollHeight;
     }
   }, [messages.length]);
@@ -79,7 +82,6 @@ export default function ChatBox() {
 
     setText("");
 
-    // After sending, ensure the list sticks to bottom
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }
@@ -93,10 +95,7 @@ export default function ChatBox() {
         ref={listRef}
         className="rounded-md bg-gray-900/60 border border-gray-700 p-3 sm:p-4 
                    max-h-[46vh] sm:max-h-80 overflow-y-auto"
-        style={{
-          overscrollBehavior: "contain", // prevent scroll chaining to the page
-          scrollBehavior: "auto",        // avoid smooth page-like scrolling
-        }}
+        style={{ overscrollBehavior: "contain", scrollBehavior: "auto" }}
       >
         <ul className="space-y-2 text-sm sm:text-base">
           {messages.map((m) => (
@@ -109,10 +108,7 @@ export default function ChatBox() {
       </div>
 
       {/* Input row */}
-      <form
-        onSubmit={onSend}
-        className="mt-3 sm:mt-4 flex flex-col sm:flex-row gap-2"
-      >
+      <form onSubmit={onSend} className="mt-3 sm:mt-4 flex flex-col sm:flex-row gap-2">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
