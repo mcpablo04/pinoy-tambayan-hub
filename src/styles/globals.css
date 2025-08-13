@@ -24,18 +24,21 @@ html, body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   height: 100%;
-  /* The big one: never allow horizontal scroll */
-  overflow-x: hidden;
+  overflow-x: hidden;         /* hard-stop any horizontal scroll */
 }
 
 /* Predictable sizing */
 *, *::before, *::after { box-sizing: border-box; }
 
-/* Media never overflows; long words can wrap */
+/* Media never overflows */
 img, svg, video { max-width: 100%; height: auto; }
-* { min-width: 0; }             /* so flex/grid children don’t push width */
-body { word-break: break-word; }
 
-/* Handy utilities used in weather chips row */
+/* Helpful utilities */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Optional card helper to match your theme */
+.card { @apply bg-card/80 rounded-lg p-4 border border-white/5; }
+
+/* DO NOT set min-width on all elements!  (this caused the vertical letters) */
+/* If you need it on a specific flex child, use Tailwind's `min-w-0` class locally. */
