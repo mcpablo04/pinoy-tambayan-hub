@@ -1,18 +1,16 @@
+/* src/styles/globals.css */
 @import "tailwindcss";
 
-/* === Compat tokens so old class names still work === */
 @theme inline {
   --color-darkbg: #0f1115;
   --color-lighttext: #eaeaea;
   --color-card: #1f2430;
   --color-primary: #3b82f6;
 
-  /* v4 defaults you already have */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 }
 
-/* Prefer dark by user setting; you can keep your media query too */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -21,31 +19,23 @@
 }
 
 /* Base */
-html,
-body {
+html, body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-  overflow-x: hidden;       /* Prevent any horizontal bleed */
   height: 100%;
+  /* The big one: never allow horizontal scroll */
+  overflow-x: hidden;
 }
 
-/* Keep sizing predictable so nothing “sticks out” by a pixel */
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+/* Predictable sizing */
+*, *::before, *::after { box-sizing: border-box; }
 
-/* Optional: card & link helpers to match your old look */
-.card { @apply bg-card/80 rounded-lg p-4 border border-white/5; }
-a { @apply transition-colors duration-200; }
-a:hover { @apply text-primary; }
-
-/* Prevent accidental horizontal scroll on mobile */
-html, body { overflow-x: hidden; }
-
-/* Make images/media never overflow */
+/* Media never overflows; long words can wrap */
 img, svg, video { max-width: 100%; height: auto; }
+* { min-width: 0; }             /* so flex/grid children don’t push width */
+body { word-break: break-word; }
 
-/* Hide scrollbar for horizontal chips row */
+/* Handy utilities used in weather chips row */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
