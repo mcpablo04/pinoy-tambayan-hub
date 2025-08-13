@@ -20,6 +20,7 @@ type Msg = {
   id: string;
   uid?: string | null;
   name: string;
+  photoURL?: string | null;
   text: string;
   createdAt?: { seconds: number } | null;
 };
@@ -32,16 +33,15 @@ export default function ChatBox() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  // Prefill display name for signed-in users (don’t overwrite manual edits)
+  // Prefill display name
   useEffect(() => {
     if (profile?.displayName && !name) setName(profile.displayName);
   }, [profile?.displayName, name]);
 
-  // Scrollable container for messages (not the page)
   const listRef = useRef<HTMLDivElement | null>(null);
   const didInitialSnapshot = useRef(false);
 
-  // realtime messages (last 200, oldest → newest)
+  // Realtime messages
   useEffect(() => {
     const q = query(collection(db, "messages"), orderBy("createdAt", "asc"), limit(200));
     const unsub = onSnapshot(q, (snap) => {
@@ -52,6 +52,7 @@ export default function ChatBox() {
           id: d.id,
           uid: (data.uid ?? null) as string | null,
           name: (data.name ?? "").toString(),
+          photoURL: (data.photoURL ?? null) as string | null,
           text: (data.text ?? "").toString(),
           createdAt: data.createdAt ?? null,
         });
@@ -62,7 +63,7 @@ export default function ChatBox() {
     return () => unsub();
   }, []);
 
-  // Keep the internal list scrolled to bottom when new messages arrive
+  // Auto-scroll
   useLayoutEffect(() => {
     const el = listRef.current;
     if (!el) return;
@@ -86,6 +87,7 @@ export default function ChatBox() {
     await addDoc(collection(db, "messages"), {
       uid: user.uid,
       name: trimmedName,
+      photoURL: user.photoURL || profile?.photoURL || null,
       text: trimmedText,
       createdAt: serverTimestamp(),
     });
@@ -107,13 +109,25 @@ export default function ChatBox() {
         ref={listRef}
         className="rounded-md bg-gray-900/60 border border-gray-700 p-3 sm:p-4 
                    max-h-[46vh] sm:max-h-80 overflow-y-auto"
-        style={{ overscrollBehavior: "contain", scrollBehavior: "auto" }}
       >
-        <ul className="space-y-2 text-sm sm:text-base">
+        <ul className="space-y-3 text-sm sm:text-base">
           {messages.map((m) => (
-            <li key={m.id}>
-              <span className="text-blue-400 font-medium">{m.name}</span>
-              <span className="ml-2 text-gray-200 break-words">{m.text}</span>
+            <li key={m.id} className="flex items-start gap-3">
+              {m.photoURL ? (
+                <img
+                  src={m.photoURL}
+                  alt={m.name}
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 text-xs">
+                  {m.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <span className="text-blue-400 font-medium">{m.name}</span>
+                <p className="text-gray-200 break-words">{m.text}</p>
+              </div>
             </li>
           ))}
         </ul>

@@ -1,22 +1,23 @@
 // src/pages/profile.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { useAuth } from "../context/AuthContext";
 import { auth, db } from "../firebase/clientApp";
 import { reload } from "firebase/auth";
-
-// Vercel Blob
 import { upload } from "@vercel/blob/client";
 import type { PutBlobResult } from "@vercel/blob";
 
-// Firestore
 import {
   doc,
   runTransaction,
   serverTimestamp,
-  getDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs,
 } from "firebase/firestore";
 
 const toHandleBase = (name: string) => {
@@ -33,21 +34,21 @@ export default function ProfilePage() {
   const { user, profile, loading, updateDisplayName, updatePhotoURL, signOutApp } = useAuth();
   const router = useRouter();
 
-  // basic profile
+  // Basic profile fields
   const [name, setName]   = useState(profile?.displayName ?? "");
   const [photo, setPhoto] = useState(profile?.photoURL ?? "");
   const [msg, setMsg]     = useState<string | null>(null);
 
-  // avatar uploader
+  // Avatar uploader UI state
   const [uploadMsg,  setUploadMsg]  = useState<string | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
 
-  // redirect if not signed in
+  // Redirect if not signed in
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
 
-  // require email verification
+  // Require email verification
   useEffect(() => {
     (async () => {
       if (loading || !auth.currentUser) return;
@@ -58,7 +59,7 @@ export default function ProfilePage() {
     })();
   }, [loading, router]);
 
-  // sync local from profile
+  // Sync local from profile
   useEffect(() => {
     setName(profile?.displayName ?? "");
     setPhoto(profile?.photoURL ?? "");
@@ -68,8 +69,7 @@ export default function ProfilePage() {
     () =>
       // @ts-ignore (usernameLower may not exist yet)
       (profile?.usernameLower as string | undefined)?.toLowerCase() ??
-      // fallback to username if you previously stored only that
-      // @ts-ignore
+      // @ts-ignore (older profiles might have "username")
       (profile?.username as string | undefined)?.toLowerCase() ??
       "",
     [profile]
@@ -102,6 +102,13 @@ export default function ProfilePage() {
 
       await updatePhotoURL(blob.url);
       setPhoto(blob.url);
+
+      // (Optional) keep user doc in sync for convenience
+      await updateDoc(doc(db, "users", user.uid), {
+        photoURL: blob.url,
+        updatedAt: serverTimestamp(),
+      });
+
       setUploadMsg("Uploaded!");
       setTimeout(() => setUploadMsg(null), 1500);
     } catch (err: any) {
@@ -113,7 +120,7 @@ export default function ProfilePage() {
     }
   };
 
-  // ---------- CLAIM USERNAME FROM DISPLAY NAME ----------
+  // ---------- CLAIM UNIQUE USERNAME FROM DISPLAY NAME ----------
   async function claimUsernameFromDisplayName(displayName: string) {
     if (!user) return null;
 
@@ -127,11 +134,9 @@ export default function ProfilePage() {
       const userRef = doc(db, "users", user.uid);
       const userSnap = await tx.get(userRef);
       const current =
-        (userSnap.exists() ? ((userSnap.data() as any).usernameLower as string | null) : null) ??
-        null;
+        (userSnap.exists() ? ((userSnap.data() as any).usernameLower as string | null) : null) ?? null;
 
-      // If we already have a username and it matches the new base or is fine, skip choosing.
-      // Otherwise, find a free candidate: base, base1, base2…
+      // Try base, base1, base2, … until free
       let i = 0;
       while (true) {
         const suffix = i === 0 ? "" : String(i);
@@ -139,7 +144,7 @@ export default function ProfilePage() {
         const trimmedBase = base.slice(0, Math.max(3, 20 - suffix.length));
         const candidate = `${trimmedBase}${suffix}`;
 
-        // if candidate equals current, we can keep it
+        // If already ours, keep it
         if (current && candidate === current) {
           chosen = current;
           break;
@@ -148,7 +153,7 @@ export default function ProfilePage() {
         const unameRef = doc(db, "usernames", candidate);
         const unameSnap = await tx.get(unameRef);
 
-        // available OR already ours
+        // available OR already mapped to us
         if (!unameSnap.exists() || (unameSnap.data() as any).uid === user.uid) {
           // free previous mapping if changing
           if (current && current !== candidate) {
@@ -173,28 +178,50 @@ export default function ProfilePage() {
     return chosen;
   }
 
-  // ---------- SAVE PROFILE (name/photo + auto username) ----------
+  // ---------- SAVE PROFILE (with unique display name) ----------
   const save = async () => {
+    if (!user) return;
     setMsg(null);
 
     const newName  = name.trim();
-    const newPhoto = photo?.trim() ?? "";
+    const newPhoto = (photo ?? "").trim();
 
+    // 1) Enforce UNIQUE DISPLAY NAME (case-insensitive)
+    if (newName && newName !== (profile?.displayName ?? "")) {
+      const qName = query(
+        collection(db, "users"),
+        where("displayNameLower", "==", newName.toLowerCase())
+      );
+      const snap = await getDocs(qName);
+      if (!snap.empty) {
+        setMsg("That display name is already taken.");
+        return;
+      }
+    }
+
+    // 2) Update display name in auth (and optionally in your user doc)
     if (newName && newName !== (profile?.displayName ?? "")) {
       await updateDisplayName(newName);
-    }
-    if (newPhoto !== (profile?.photoURL ?? "")) {
-      await updatePhotoURL(newPhoto);
+      await updateDoc(doc(db, "users", user.uid), {
+        displayName: newName,
+        displayNameLower: newName.toLowerCase(),
+        updatedAt: serverTimestamp(),
+      });
     }
 
-    // ensure a username exists & is unique for this display name
+    // 3) Update photo if changed (keep user doc in sync)
+    if (newPhoto !== (profile?.photoURL ?? "")) {
+      await updatePhotoURL(newPhoto);
+      await updateDoc(doc(db, "users", user.uid), {
+        photoURL: newPhoto,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    // 4) Ensure UNIQUE USERNAME derived from display name
     const chosen = await claimUsernameFromDisplayName(newName || "user");
     if (chosen) {
-      if (chosen !== currentLower) {
-        setMsg(`Saved. Your handle is @${chosen}.`);
-      } else {
-        setMsg("Profile updated!");
-      }
+      setMsg(chosen !== currentLower ? `Saved. Your handle is @${chosen}.` : "Profile updated!");
     } else {
       setMsg("Profile updated!");
     }
@@ -208,11 +235,18 @@ export default function ProfilePage() {
     <div className="pt-20 max-w-2xl mx-auto px-4">
       <h1 className="text-3xl font-bold mb-6">Your Profile</h1>
 
+      {/* Avatar + basic info */}
       <div className="flex items-center gap-4 mb-6">
         {photo ? (
-          <img src={photo} alt="avatar" className="w-20 h-20 rounded-full object-cover" />
+          <img
+            src={photo}
+            alt="avatar"
+            className="w-24 h-24 rounded-full object-cover"
+          />
         ) : (
-          <div className="w-20 h-20 rounded-full bg-gray-800 grid place-items-center">👤</div>
+          <div className="w-24 h-24 rounded-full bg-gray-800 grid place-items-center">
+            <span className="text-3xl">👤</span>
+          </div>
         )}
         <div>
           <div className="text-lg font-semibold">{profile?.displayName || "No name yet"}</div>
@@ -233,11 +267,11 @@ export default function ProfilePage() {
         {uploadMsg && <div className="text-sm text-gray-300">{uploadMsg}</div>}
       </div>
 
-      {/* Display name & photo URL */}
+      {/* Profile fields */}
       <div className="space-y-3">
         <input
           className="w-full p-3 rounded bg-gray-800 text-white placeholder-gray-400"
-          placeholder="Display name"
+          placeholder="Display name (must be unique)"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
