@@ -1,4 +1,3 @@
-// src/pages/weather.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -70,7 +69,6 @@ async function fetchForecast(lat: number, lon: number): Promise<Forecast> {
   return res.json();
 }
 
-// IP fallback for HTTP or blocked geolocation (approx city)
 async function ipFallback(): Promise<City | null> {
   try {
     const r = await (await fetch("https://ipapi.co/json/")).json();
@@ -89,7 +87,6 @@ export default function WeatherPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Initial load for default city (no layout jumps)
   useEffect(() => {
     (async () => {
       try {
@@ -99,10 +96,8 @@ export default function WeatherPage() {
         setInitialLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Refresh when city changes
   useEffect(() => {
     if (initialLoading) return;
     (async () => {
@@ -166,8 +161,7 @@ export default function WeatherPage() {
   }, [data]);
 
   return (
-    // Hard-stop any horizontal bleed on this page
-    <div className="pt-16 min-h-screen bg-darkbg text-lighttext overflow-x-hidden">
+    <div className="pt-20 sm:pt-24 min-h-screen bg-darkbg text-lighttext overflow-x-hidden">
       <div className="w-full max-w-6xl mx-auto px-4 md:px-6">
         <h1 className="text-3xl font-bold mb-2">Weather</h1>
         <p className="text-gray-400 mb-5">
@@ -205,7 +199,7 @@ export default function WeatherPage() {
           </div>
         </div>
 
-        {/* City chips — NO negative margins, contained scroll */}
+        {/* City chips */}
         <div className="mt-4 overflow-x-auto no-scrollbar">
           <div className="inline-flex gap-2 pr-2">
             {PH_CITIES.map((c) => (
@@ -243,7 +237,7 @@ export default function WeatherPage() {
         </div>
         {geoErr && <p className="text-amber-400 text-sm mb-3">{geoErr}</p>}
 
-        {/* Forecast area — responsive grid; no horizontal bleed */}
+        {/* Forecast area */}
         <div className="relative">
           {initialLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
