@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+/* ===================== Types ===================== */
 type Forecast = {
   daily: {
     time: string[];
@@ -19,6 +20,20 @@ type City = {
   lon: number;
 };
 
+type PhAlerts = {
+  hasStormInPAR: boolean;
+  stormName?: string;      // PAGASA name, if available
+  category?: string;       // Typhoon / TS / TD …
+  bulletinUrl?: string;
+
+  hasLPA: boolean;
+  lpaText?: string;
+  advisoryUrl?: string;
+
+  fetchedAt?: string;
+};
+
+/* ===================== PH presets & bounds ===================== */
 const PH_CITIES: City[] = [
   { name: "Manila", lat: 14.5995, lon: 120.9842 },
   { name: "Quezon City", lat: 14.676, lon: 121.0437 },
@@ -29,7 +44,9 @@ const PH_CITIES: City[] = [
   { name: "Cagayan de Oro", lat: 8.4542, lon: 124.6319 },
 ];
 
-// WMO → emoji + label
+const PH_BOUNDS = { minLat: 4.5, maxLat: 21.5, minLon: 116.0, maxLon: 127.5 };
+
+/* ===================== WMO codes ===================== */
 const WMO: Record<number, { t: string; e: string }> = {
   0: { t: "Clear", e: "☀️" },
   1: { t: "Mainly clear", e: "🌤️" },
@@ -62,6 +79,26 @@ const WMO: Record<number, { t: string; e: string }> = {
 const dayShort = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { weekday: "short" });
 
+/* ===================== Helpers ===================== */
+const isInPH = (lat: number, lon: number) =>
+  lat >= PH_BOUNDS.minLat &&
+  lat <= PH_BOUNDS.maxLat &&
+  lon >= PH_BOUNDS.minLon &&
+  lon <= PH_BOUNDS.maxLon;
+
+const nearestPHCity = (lat: number, lon: number): City => {
+  let best = PH_CITIES[0];
+  let bestD = Infinity;
+  for (const c of PH_CITIES) {
+    const d = Math.hypot(c.lat - lat, c.lon - lon);
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  return best;
+};
+
 async function geocodeCity(q: string): Promise<City | null> {
   if (!q.trim()) return null;
   const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
@@ -75,10 +112,18 @@ async function geocodeCity(q: string): Promise<City | null> {
 }
 
 async function reverseGeocode(lat: number, lon: number): Promise<City | null> {
+  // Clamp to PH if outside bounds
+  if (!isInPH(lat, lon)) return nearestPHCity(lat, lon);
+
   const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=en&format=json`;
   const r = await (await fetch(url)).json();
   const hit = (r?.results as any[])?.[0];
-  return hit ? { name: hit.name, country: hit.country, lat, lon } : null;
+  const city = hit ? { name: hit.name, country: hit.country, lat, lon } : null;
+
+  if (city && city.country && city.country !== "Philippines") {
+    return nearestPHCity(lat, lon);
+  }
+  return city ?? nearestPHCity(lat, lon);
 }
 
 async function fetchForecast(lat: number, lon: number): Promise<Forecast> {
@@ -86,7 +131,7 @@ async function fetchForecast(lat: number, lon: number): Promise<Forecast> {
     `latitude=${lat}`,
     `longitude=${lon}`,
     `daily=weathercode,temperature_2m_max,temperature_2m_min`,
-    `timezone=auto`,
+    `timezone=Asia%2FManila`,
   ].join("&");
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?${p}`);
   if (!res.ok) throw new Error("Forecast fetch failed");
@@ -98,12 +143,34 @@ async function ipFallback(): Promise<City | null> {
   try {
     const r = await (await fetch("https://ipapi.co/json/")).json();
     if (!r || !r.latitude || !r.longitude) return null;
-    return { name: r.city || "Your location", country: r.country_name, lat: r.latitude, lon: r.longitude };
+    const lat = r.latitude as number;
+    const lon = r.longitude as number;
+    if (!isInPH(lat, lon)) return nearestPHCity(lat, lon);
+    return { name: r.city || "Your location", country: r.country_name, lat, lon };
   } catch {
     return null;
   }
 }
 
+// Persist selection between visits
+const loadSavedCity = (): City | null => {
+  try {
+    const raw = localStorage.getItem("weather.city");
+    if (!raw) return null;
+    const c = JSON.parse(raw) as City;
+    if (typeof c?.lat === "number" && typeof c?.lon === "number") return c;
+    return null;
+  } catch {
+    return null;
+  }
+};
+const saveCity = (c: City) => {
+  try {
+    localStorage.setItem("weather.city", JSON.stringify(c));
+  } catch {}
+};
+
+/* ===================== Component ===================== */
 export default function WeatherPage() {
   const [search, setSearch] = useState("");
   const [city, setCity] = useState<City>(PH_CITIES[0]);
@@ -113,23 +180,88 @@ export default function WeatherPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // PAGASA alerts
+  const [alerts, setAlerts] = useState<PhAlerts | null>(null);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+
+  // First load: saved city → precise geolocation (HTTPS) → IP → Manila
   useEffect(() => {
     (async () => {
+      const saved = loadSavedCity();
+      if (saved) {
+        setCity(saved);
+        try {
+          setData(await fetchForecast(saved.lat, saved.lon));
+        } finally {
+          setInitialLoading(false);
+        }
+        return;
+      }
+
+      const doGeo = async () =>
+        new Promise<City | null>((resolve) => {
+          if (!navigator.geolocation) return resolve(null);
+          navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+              try {
+                resolve(
+                  (await reverseGeocode(pos.coords.latitude, pos.coords.longitude)) ??
+                    null
+                );
+              } catch {
+                resolve(null);
+              }
+            },
+            async () => resolve(await ipFallback()),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+          );
+        });
+
+      let picked: City | null = null;
+      if (location.protocol === "https:") {
+        picked = await doGeo();
+      } else {
+        picked = await ipFallback();
+        setGeoErr("Using approximate location (enable HTTPS for precise location).");
+      }
+
+      const finalCity = picked ?? PH_CITIES[0];
+      setCity(finalCity);
       try {
-        const f = await fetchForecast(city.lat, city.lon);
-        setData(f);
+        setData(await fetchForecast(finalCity.lat, finalCity.lon));
       } finally {
         setInitialLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Fetch PAGASA alerts on load (from /api/ph-alerts)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setAlertsLoading(true);
+      try {
+        const r = await fetch("/api/ph-alerts");
+        const json = (await r.json()) as PhAlerts;
+        if (!cancelled) setAlerts(json);
+      } catch {
+        if (!cancelled) setAlerts(null);
+      } finally {
+        if (!cancelled) setAlertsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Refetch forecast when city changes
   useEffect(() => {
     if (initialLoading) return;
     (async () => {
       setRefreshing(true);
       try {
+        saveCity(city);
         const f = await fetchForecast(city.lat, city.lon);
         setData(f);
       } finally {
@@ -146,19 +278,26 @@ export default function WeatherPage() {
   const useMyLocation = () => {
     setGeoErr(null);
     if (!navigator.geolocation) {
-      // quick IP fallback
       ipFallback().then((c) => c && setCity(c));
       return;
     }
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const named =
-          (await reverseGeocode(pos.coords.latitude, pos.coords.longitude)) ||
-          (await ipFallback()) || // if reverse geocode fails, use IP
-          { name: "Your location", lat: pos.coords.latitude, lon: pos.coords.longitude };
-        setCity(named);
+        try {
+          const named =
+            (await reverseGeocode(pos.coords.latitude, pos.coords.longitude)) ||
+            (await ipFallback()) || {
+              name: "Your location",
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+            };
+          setCity(named);
+        } catch {
+          const c = await ipFallback();
+          if (c) setCity(c);
+        }
       },
-      async (err) => {
+      async () => {
         setGeoErr("Precise location blocked. Using approximate location.");
         const c = await ipFallback();
         if (c) setCity(c);
@@ -190,8 +329,90 @@ export default function WeatherPage() {
       <div className="w-full max-w-6xl mx-auto px-4 md:px-6">
         <h1 className="text-3xl font-bold mb-2">Weather</h1>
         <p className="text-gray-400 mb-5">
-          7-day forecast powered by Open-Meteo. PH results are prioritized.
+          7-day forecast for the Philippines. Timezone: Asia/Manila.
         </p>
+
+        {/* PAGASA Alerts — fixed height to avoid layout shift */}
+        <div className="mb-5 rounded-lg border border-white/10 bg-gray-800/70 p-4 min-h-[96px]">
+          <div className="flex items-start gap-3">
+            <div className="text-2xl" aria-hidden>
+              🌀
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">PAGASA Alerts (PAR & LPA)</h3>
+
+              {alertsLoading ? (
+                <div className="mt-2 animate-pulse space-y-2">
+                  <div className="h-4 bg-gray-700/60 rounded w-1/3" />
+                  <div className="h-3 bg-gray-700/50 rounded w-2/3" />
+                </div>
+              ) : alerts ? (
+                <div className="space-y-1 text-sm mt-1">
+                  <div>
+                    <span className="font-medium">Tropical Cyclone in PAR:</span>{" "}
+                    {alerts.hasStormInPAR ? (
+                      <span className="text-red-300">
+                        YES — {alerts.category ?? "Tropical Cyclone"}
+                        {alerts.stormName ? (
+                          <b className="ml-1 uppercase">{alerts.stormName}</b>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="text-green-300">None detected</span>
+                    )}
+                    {"  "}
+                    {alerts.bulletinUrl && (
+                      <a
+                        className="ml-2 text-blue-300 underline"
+                        href={alerts.bulletinUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        PAGASA Bulletin ↗
+                      </a>
+                    )}
+                  </div>
+
+                  <div>
+                    <span className="font-medium">Low Pressure Area (LPA):</span>{" "}
+                    {alerts.hasLPA ? (
+                      <span className="text-amber-300">
+                        YES — {(alerts.lpaText ?? "See advisory").slice(0, 160)}…
+                      </span>
+                    ) : (
+                      <span className="text-green-300">None detected</span>
+                    )}
+                    {"  "}
+                    {alerts.advisoryUrl && (
+                      <a
+                        className="ml-2 text-blue-300 underline"
+                        href={alerts.advisoryUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Advisory ↗
+                      </a>
+                    )}
+                  </div>
+
+                  {alerts.fetchedAt && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Updated:{" "}
+                      {new Date(alerts.fetchedAt).toLocaleString("en-PH", {
+                        timeZone: "Asia/Manila",
+                      })}{" "}
+                      (verify with PAGASA)
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-sm mt-1">
+                  Couldn’t load alerts right now. Try again later.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Search / actions */}
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
@@ -226,7 +447,7 @@ export default function WeatherPage() {
           </div>
         </div>
 
-        {/* Chips: full-bleed scroll with snap, no right cut */}
+        {/* Chips */}
         <div className="-mx-4 px-4 mt-4 overflow-x-auto no-scrollbar snap-x snap-mandatory">
           <div className="flex gap-2">
             {PH_CITIES.map((c) => (
@@ -264,50 +485,52 @@ export default function WeatherPage() {
         </div>
         {geoErr && <p className="text-amber-400 text-sm mb-3">{geoErr}</p>}
 
-        {/* Forecast grid */}
-{initialLoading ? (
-  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
-    {Array.from({ length: 7 }).map((_, i) => (
-      <div key={i} className="min-h-[160px] rounded-lg bg-gray-800/50 animate-pulse min-w-0" />
-    ))}
-  </div>
-) : days.length ? (
-  <div className="relative">
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
-      {days.map((d) => (
-        <div
-          key={d.key}
-          className="rounded-lg bg-gray-800/60 border border-white/5 p-4 min-h-[160px] min-w-0"
-        >
-          <div className="text-xs text-gray-400 mb-2">{d.label}</div>
-          <div className="flex items-start gap-2 mb-2 min-w-0">
-            <span className="text-3xl leading-none shrink-0">{d.emoji}</span>
-
-            {/* Full text, no ellipsis; wraps nicely on small screens */}
-            <div className="text-sm text-gray-300 whitespace-normal break-words leading-snug min-w-0">
-              {d.text}
+        {/* Forecast area — reserve height to avoid jump */}
+        <div className="relative min-h-[240px]">
+          {initialLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="min-h-[160px] rounded-lg bg-gray-800/50 animate-pulse min-w-0"
+                />
+              ))}
             </div>
-          </div>
+          ) : days.length ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
+                {days.map((d) => (
+                  <div
+                    key={d.key}
+                    className="rounded-lg bg-gray-800/60 border border-white/5 p-4 min-h-[160px] min-w-0"
+                  >
+                    <div className="text-xs text-gray-400 mb-2">{d.label}</div>
+                    <div className="flex items-start gap-2 mb-2 min-w-0">
+                      <span className="text-3xl leading-none shrink-0">{d.emoji}</span>
+                      <div className="text-sm text-gray-300 whitespace-normal break-words leading-snug min-w-0">
+                        {d.text}
+                      </div>
+                    </div>
+                    <div className="text-lg font-semibold">
+                      {d.tMax}°C{" "}
+                      <span className="text-sm text-gray-400 ml-1">{d.tMin}°C</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-          <div className="text-lg font-semibold">
-            {d.tMax}°C{" "}
-            <span className="text-sm text-gray-400 ml-1">{d.tMin}°C</span>
-          </div>
+              {refreshing && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div className="rounded-xl bg-black/30 px-3 py-2">
+                    <div className="w-6 h-6 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-gray-400">No forecast available.</p>
+          )}
         </div>
-      ))}
-    </div>
-
-    {refreshing && (
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="rounded-xl bg-black/30 px-3 py-2">
-          <div className="w-6 h-6 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
-        </div>
-      </div>
-    )}
-  </div>
-) : (
-  <p className="text-gray-400">No forecast available.</p>
-)}
 
         <div className="h-8" />
       </div>
