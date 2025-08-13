@@ -14,15 +14,20 @@ import type { PutBlobResult } from "@vercel/blob";
 // Firestore
 import {
   doc,
-  getDoc,
   runTransaction,
   serverTimestamp,
+  getDoc,
 } from "firebase/firestore";
 
-type HandleStatus = "idle" | "checking" | "available" | "taken" | "saving" | "error";
-
-const sanitize = (s: string) => s.toLowerCase().trim();
-const valid = (s: string) => /^[a-z0-9._-]{3,20}$/.test(s);
+const toHandleBase = (name: string) => {
+  // only a–z 0–9 . _ - ; 3–20 chars target
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "")      // remove disallowed
+    .replace(/^[._-]+|[._-]+$/g, "")    // trim punctuation edges
+    .slice(0, 20);                      // cap length
+  return base || "user";
+};
 
 export default function ProfilePage() {
   const { user, profile, loading, updateDisplayName, updatePhotoURL, signOutApp } = useAuth();
@@ -36,13 +41,6 @@ export default function ProfilePage() {
   // avatar uploader
   const [uploadMsg,  setUploadMsg]  = useState<string | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
-
-  // username
-  const [handle, setHandle]               = useState<string>("");
-  const [handleStatus, setHandleStatus]   = useState<HandleStatus>("idle");
-  const [handleMsg, setHandleMsg]         = useState<string | null>(null);
-  const [lastChecked, setLastChecked]     = useState<string | null>(null); // sanitized, last verified
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   // redirect if not signed in
   useEffect(() => {
@@ -60,29 +58,24 @@ export default function ProfilePage() {
     })();
   }, [loading, router]);
 
-  // sync local state from profile
+  // sync local from profile
   useEffect(() => {
     setName(profile?.displayName ?? "");
     setPhoto(profile?.photoURL ?? "");
-    // @ts-ignore (extra fields from Firestore user doc)
-    const current = (profile as any)?.username ?? "";
-    setHandle(current ?? "");
-    setLastChecked(null);
-    setHandleStatus("idle");
-    setHandleMsg(null);
   }, [profile?.displayName, profile?.photoURL]);
 
-  // current usernameLower from profile (if present)
   const currentLower = useMemo(
     () =>
-      sanitize(
-        // @ts-ignore
-        ((profile as any)?.usernameLower ?? (profile as any)?.username ?? "") as string
-      ),
+      // @ts-ignore (usernameLower may not exist yet)
+      (profile?.usernameLower as string | undefined)?.toLowerCase() ??
+      // fallback to username if you previously stored only that
+      // @ts-ignore
+      (profile?.username as string | undefined)?.toLowerCase() ??
+      "",
     [profile]
   );
 
-  // ---------- AVATAR UPLOAD (Vercel Blob) ----------
+  // ---------- AVATAR UPLOAD ----------
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputEl = e.currentTarget;
     const f = inputEl.files?.[0];
@@ -120,154 +113,96 @@ export default function ProfilePage() {
     }
   };
 
-  // ---------- USERNAME (debounced check + transaction save) ----------
-  const doCheckHandle = async (raw: string) => {
-    setHandleMsg(null);
-    const h = sanitize(raw);
+  // ---------- CLAIM USERNAME FROM DISPLAY NAME ----------
+  async function claimUsernameFromDisplayName(displayName: string) {
+    if (!user) return null;
 
-    if (!valid(h)) {
-      setHandleStatus("error");
-      setHandleMsg("Use 3–20 chars: a–z, 0–9, dot, underscore, or hyphen.");
-      setLastChecked(null);
-      return;
-    }
+    const baseRaw = toHandleBase(displayName || "user");
+    // ensure at least 3 chars (pad with uid if needed)
+    let base = baseRaw.length >= 3 ? baseRaw : `${baseRaw}${user.uid.slice(0, 3 - baseRaw.length)}`;
 
-    // unchanged from current ⇒ considered "available" (no-op)
-    if (currentLower && h === currentLower) {
-      setHandleStatus("available");
-      setHandleMsg("This is already your username.");
-      setLastChecked(h);
-      return;
-    }
+    let chosen: string | null = null;
 
-    setHandleStatus("checking");
-    try {
-      const snap = await getDoc(doc(db, "usernames", h));
-      if (snap.exists() && snap.data()?.uid !== user?.uid) {
-        setHandleStatus("taken");
-        setHandleMsg("That username is already taken.");
-        setLastChecked(h);
-      } else {
-        setHandleStatus("available");
-        setHandleMsg("Username is available.");
-        setLastChecked(h);
-      }
-    } catch (e: any) {
-      console.error(e);
-      setHandleStatus("error");
-      setHandleMsg(e?.message ?? "Failed to check username.");
-      setLastChecked(null);
-    }
-  };
+    await runTransaction(db, async (tx) => {
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await tx.get(userRef);
+      const current =
+        (userSnap.exists() ? ((userSnap.data() as any).usernameLower as string | null) : null) ??
+        null;
 
-  // Debounced auto-check while typing
-  useEffect(() => {
-    if (!handle) {
-      setHandleStatus("idle");
-      setHandleMsg(null);
-      setLastChecked(null);
-      return;
-    }
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => doCheckHandle(handle), 500);
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handle]);
+      // If we already have a username and it matches the new base or is fine, skip choosing.
+      // Otherwise, find a free candidate: base, base1, base2…
+      let i = 0;
+      while (true) {
+        const suffix = i === 0 ? "" : String(i);
+        // keep within 20 chars total
+        const trimmedBase = base.slice(0, Math.max(3, 20 - suffix.length));
+        const candidate = `${trimmedBase}${suffix}`;
 
-  const manualCheck = async () => {
-    if (handle) await doCheckHandle(handle);
-  };
+        // if candidate equals current, we can keep it
+        if (current && candidate === current) {
+          chosen = current;
+          break;
+        }
 
-  const saveHandle = async () => {
-    if (!user) return;
-
-    const h = sanitize(handle);
-    if (!valid(h)) {
-      setHandleStatus("error");
-      setHandleMsg("Invalid username.");
-      return;
-    }
-
-    const unchanged = currentLower && h === currentLower;
-    const okToSave = unchanged || (lastChecked === h && handleStatus === "available");
-    if (!okToSave) {
-      setHandleMsg("Please click Check first to confirm availability.");
-      return;
-    }
-
-    setHandleStatus("saving");
-    setHandleMsg(null);
-
-    try {
-      await runTransaction(db, async (tx) => {
-        const unameRef = doc(db, "usernames", h);
-        const userRef  = doc(db, "users", user.uid);
-
+        const unameRef = doc(db, "usernames", candidate);
         const unameSnap = await tx.get(unameRef);
-        const userSnap  = await tx.get(userRef);
-        const current   = (userSnap.exists() ? (userSnap.data() as any).usernameLower : null) as
-          | string
-          | null;
 
-        if (current === h) return; // no change
-
-        if (unameSnap.exists() && (unameSnap.data() as any).uid !== user.uid) {
-          throw new Error("That username is already taken.");
+        // available OR already ours
+        if (!unameSnap.exists() || (unameSnap.data() as any).uid === user.uid) {
+          // free previous mapping if changing
+          if (current && current !== candidate) {
+            tx.delete(doc(db, "usernames", current));
+          }
+          // claim new mapping + update user doc
+          tx.set(unameRef, { uid: user.uid, createdAt: serverTimestamp() });
+          tx.set(
+            userRef,
+            { username: candidate, usernameLower: candidate, updatedAt: serverTimestamp() },
+            { merge: true }
+          );
+          chosen = candidate;
+          break;
         }
 
-        if (current) {
-          tx.delete(doc(db, "usernames", current));
-        }
+        i++;
+        if (i > 9999) throw new Error("Could not find a free username.");
+      }
+    });
 
-        tx.set(unameRef, { uid: user.uid, createdAt: serverTimestamp() });
-        tx.set(
-          userRef,
-          { username: handle, usernameLower: h, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
-      });
+    return chosen;
+  }
 
-      setHandleStatus("idle");
-      setHandleMsg("Username saved!");
-      setLastChecked(h);
-      // reflect locally
-      // @ts-ignore
-      (profile as any).username = handle;
-      // @ts-ignore
-      (profile as any).usernameLower = h;
-      setTimeout(() => setHandleMsg(null), 1500);
-    } catch (e: any) {
-      console.error(e);
-      setHandleStatus("error");
-      setHandleMsg(e?.message ?? "Failed to save username.");
-    }
-  };
-
-  // save display name / photo URL
+  // ---------- SAVE PROFILE (name/photo + auto username) ----------
   const save = async () => {
     setMsg(null);
-    if (name.trim() && name.trim() !== (profile?.displayName ?? "")) {
-      await updateDisplayName(name.trim());
+
+    const newName  = name.trim();
+    const newPhoto = photo?.trim() ?? "";
+
+    if (newName && newName !== (profile?.displayName ?? "")) {
+      await updateDisplayName(newName);
     }
-    if ((photo ?? "") !== (profile?.photoURL ?? "")) {
-      await updatePhotoURL(photo.trim());
+    if (newPhoto !== (profile?.photoURL ?? "")) {
+      await updatePhotoURL(newPhoto);
     }
-    setMsg("Profile updated!");
-    setTimeout(() => setMsg(null), 1800);
+
+    // ensure a username exists & is unique for this display name
+    const chosen = await claimUsernameFromDisplayName(newName || "user");
+    if (chosen) {
+      if (chosen !== currentLower) {
+        setMsg(`Saved. Your handle is @${chosen}.`);
+      } else {
+        setMsg("Profile updated!");
+      }
+    } else {
+      setMsg("Profile updated!");
+    }
+
+    setTimeout(() => setMsg(null), 2000);
   };
 
   if (loading || !user) return <div className="pt-20">Loading…</div>;
-
-  // Derived UI helpers for buttons
-  const typedLower     = sanitize(handle);
-  const unchanged      = !!currentLower && typedLower === currentLower;
-  const canSaveNewName = lastChecked === typedLower && handleStatus === "available";
-  const saveDisabled   =
-    handleStatus === "saving" ||
-    !valid(typedLower) ||
-    (!unchanged && !canSaveNewName);
 
   return (
     <div className="pt-20 max-w-2xl mx-auto px-4">
@@ -320,51 +255,6 @@ export default function ProfilePage() {
           Save changes
         </button>
         {msg && <div className="text-green-400 text-sm">{msg}</div>}
-      </div>
-
-      {/* Username */}
-      <div className="h-px bg-gray-800 my-6" />
-      <div className="space-y-2">
-        <label className="block text-sm text-gray-300">Username</label>
-        <div className="flex gap-2">
-          <input
-            className="flex-1 p-3 rounded bg-gray-800 text-white placeholder-gray-400"
-            placeholder="e.g. juan_dela_cruz"
-            value={handle}
-            onChange={(e) => setHandle(e.target.value)}
-          />
-          {!unchanged && (
-            <button
-              onClick={manualCheck}
-              className="shrink-0 bg-gray-700 hover:bg-gray-600 rounded px-4 py-2 font-semibold"
-            >
-              Check
-            </button>
-          )}
-          <button
-            onClick={saveHandle}
-            className="shrink-0 bg-blue-600 hover:bg-blue-500 rounded px-4 py-2 font-semibold disabled:opacity-60"
-            disabled={saveDisabled}
-          >
-            {handleStatus === "saving" ? "Saving…" : "Save"}
-          </button>
-        </div>
-
-        {unchanged ? (
-          <div className="text-sm text-green-400">This is already your username.</div>
-        ) : handleMsg ? (
-          <div
-            className={`text-sm ${
-              handleStatus === "available"
-                ? "text-green-400"
-                : handleStatus === "taken" || handleStatus === "error"
-                ? "text-red-400"
-                : "text-gray-300"
-            }`}
-          >
-            {handleMsg}
-          </div>
-        ) : null}
       </div>
 
       <div className="h-px bg-gray-800 my-6" />
