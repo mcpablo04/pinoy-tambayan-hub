@@ -1,3 +1,4 @@
+// src/pages/weather.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -13,6 +14,19 @@ type Forecast = {
 };
 
 type City = { name: string; country?: string; lat: number; lon: number };
+
+type PhAlerts = {
+  hasStormInPAR: boolean;
+  stormName?: string;   // PAGASA name (e.g. EGAY)
+  category?: string;    // Typhoon / STS / TS / TD
+  bulletinUrl?: string;
+
+  hasLPA: boolean;
+  lpaText?: string;
+  advisoryUrl?: string;
+
+  fetchedAt?: string;   // ISO
+};
 
 /* ===================== PH presets ===================== */
 const PH_CITIES: City[] = [
@@ -87,6 +101,11 @@ export default function WeatherPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // PAGASA alerts
+  const [alerts, setAlerts] = useState<PhAlerts | null>(null);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+
+  // Initial forecast (no layout jumps)
   useEffect(() => {
     (async () => {
       try {
@@ -96,8 +115,28 @@ export default function WeatherPage() {
         setInitialLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Fetch PAGASA alerts (from /api/ph-alerts)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setAlertsLoading(true);
+      try {
+        const r = await fetch("/api/ph-alerts");
+        const json = (await r.json()) as PhAlerts;
+        if (!cancelled) setAlerts(json);
+      } catch {
+        if (!cancelled) setAlerts(null);
+      } finally {
+        if (!cancelled) setAlertsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Refresh when city changes
   useEffect(() => {
     if (initialLoading) return;
     (async () => {
@@ -167,6 +206,86 @@ export default function WeatherPage() {
         <p className="text-gray-400 mb-5">
           7-day forecast for the Philippines. Timezone: Asia/Manila.
         </p>
+
+        {/* PAGASA Alerts — fixed height to avoid layout shift */}
+        <div className="mb-5 rounded-lg border border-white/10 bg-gray-800/70 p-4 min-h-[96px]">
+          <div className="flex items-start gap-3">
+            <div className="text-2xl" aria-hidden>🌀</div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-lg">PAGASA Alerts (PAR & LPA)</h3>
+
+              {alertsLoading ? (
+                <div className="mt-2 animate-pulse space-y-2">
+                  <div className="h-4 bg-gray-700/60 rounded w-1/3" />
+                  <div className="h-3 bg-gray-700/50 rounded w-2/3" />
+                </div>
+              ) : alerts ? (
+                <div className="space-y-1 text-sm mt-1">
+                  <div className="truncate">
+                    <span className="font-medium">Tropical Cyclone in PAR:</span>{" "}
+                    {alerts.hasStormInPAR ? (
+                      <span className="text-red-300">
+                        YES — {alerts.category ?? "Tropical Cyclone"}
+                        {alerts.stormName ? (
+                          <b className="ml-1 uppercase">{alerts.stormName}</b>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="text-green-300">None detected</span>
+                    )}
+                    {" "}
+                    {alerts.bulletinUrl && (
+                      <a
+                        className="ml-2 text-blue-300 underline"
+                        href={alerts.bulletinUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        PAGASA Bulletin ↗
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="truncate">
+                    <span className="font-medium">Low Pressure Area (LPA):</span>{" "}
+                    {alerts.hasLPA ? (
+                      <span className="text-amber-300">
+                        YES — {(alerts.lpaText ?? "See advisory").slice(0, 160)}…
+                      </span>
+                    ) : (
+                      <span className="text-green-300">None detected</span>
+                    )}
+                    {" "}
+                    {alerts.advisoryUrl && (
+                      <a
+                        className="ml-2 text-blue-300 underline"
+                        href={alerts.advisoryUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Advisory ↗
+                      </a>
+                    )}
+                  </div>
+
+                  {alerts.fetchedAt && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Updated:{" "}
+                      {new Date(alerts.fetchedAt).toLocaleString("en-PH", {
+                        timeZone: "Asia/Manila",
+                      })}{" "}
+                      (verify with PAGASA)
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-sm mt-1">
+                  Couldn’t load alerts right now. Try again later.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Search / actions */}
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
