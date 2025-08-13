@@ -2,19 +2,31 @@
 "use client";
 
 import Link from "next/link";
+import { useLayoutEffect, useRef } from "react";
 import ChatBox from "../components/ChatBox";
 import { usePlayer } from "../context/PlayerContext";
 
 export default function Home() {
   const { setShowUI } = usePlayer();
+  const heroRef = useRef<HTMLElement | null>(null);
+
+  // Run before paint to avoid any initial jump
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    heroRef.current?.scrollIntoView({ block: "start", inline: "nearest" });
+
+    // If something (like a chat input) grabbed focus, blur it
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }, []);
 
   return (
     <>
-      {/* HERO (left-aligned, not centered) */}
-      <section className="pt-20 sm:pt-24 pb-8 bg-darkbg text-lighttext">
+      {/* HERO (left-aligned) */}
+      <section ref={heroRef} className="pt-20 sm:pt-24 pb-8 bg-darkbg text-lighttext">
         <div className="mx-auto max-w-6xl px-4">
           <div className="grid md:grid-cols-2 gap-8 items-center">
-            {/* Text */}
             <div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-blue-400 leading-snug">
                 Welcome to Pinoy Tambayan Hub
@@ -23,7 +35,6 @@ export default function Home() {
                 Your daily dose of OPM hits, live radio, and tambayan vibes — all in
                 one place.
               </p>
-
               <div className="mt-5 flex gap-3">
                 <Link
                   href="/radio"
@@ -34,7 +45,6 @@ export default function Home() {
                 >
                   Start Listening
                 </Link>
-
                 <Link
                   href="/weather"
                   prefetch={false}
@@ -48,39 +58,25 @@ export default function Home() {
 
             {/* Quick links / cards */}
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <Link
-                href="/news"
-                className="rounded-xl bg-gray-800/70 p-4 border border-white/10 hover:bg-gray-800 transition"
-              >
+              <Link href="/news" className="rounded-xl bg-gray-800/70 p-4 border border-white/10 hover:bg-gray-800 transition">
                 <div className="text-2xl mb-2">📰</div>
                 <h3 className="font-semibold">OPM & Community News</h3>
                 <p className="text-sm text-gray-400 mt-1">Gig updates & releases</p>
               </Link>
 
-              <Link
-                href="/events"
-                className="rounded-xl bg-gray-800/70 p-4 border border-white/10 hover:bg-gray-800 transition"
-              >
+              <Link href="/events" className="rounded-xl bg-gray-800/70 p-4 border border-white/10 hover:bg-gray-800 transition">
                 <div className="text-2xl mb-2">📅</div>
                 <h3 className="font-semibold">Events</h3>
                 <p className="text-sm text-gray-400 mt-1">Concerts & meetups</p>
               </Link>
 
-              <Link
-                href="/radio"
-                onClick={() => setShowUI(true)}
-                className="rounded-xl bg-gray-800/70 p-4 border border-white/10 hover:bg-gray-800 transition"
-              >
+              <Link href="/radio" onClick={() => setShowUI(true)} className="rounded-xl bg-gray-800/70 p-4 border border-white/10 hover:bg-gray-800 transition">
                 <div className="text-2xl mb-2">📻</div>
                 <h3 className="font-semibold">Live Radio</h3>
                 <p className="text-sm text-gray-400 mt-1">Pinoy stations</p>
               </Link>
 
-              {/* Replaced Lyrics with News */}
-              <Link
-                href="/news"
-                className="rounded-xl bg-gray-800/70 p-4 border border-white/10 hover:bg-gray-800 transition"
-              >
+              <Link href="/news" className="rounded-xl bg-gray-800/70 p-4 border border-white/10 hover:bg-gray-800 transition">
                 <div className="text-2xl mb-2">🗞️</div>
                 <h3 className="font-semibold">Latest News</h3>
                 <p className="text-sm text-gray-400 mt-1">Headlines & updates</p>
@@ -90,9 +86,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* COMMUNITY CHAT — always shown */}
+      {/* COMMUNITY CHAT — always shown, but won’t steal initial focus */}
       <section className="py-8 sm:py-10 pb-24">
-        {/* pb-24 == space so the floating player button never overlaps inputs */}
         <div className="mx-auto w-full max-w-6xl px-4">
           <h2 className="text-xl sm:text-2xl font-bold mb-3">Community Chat</h2>
           <div className="mx-auto w-full max-w-3xl">

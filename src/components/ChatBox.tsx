@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, FormEvent } from "react";
+import { useEffect, useRef, useState, FormEvent, useLayoutEffect } from "react";
 import {
   collection,
   addDoc,
@@ -23,7 +23,10 @@ export default function ChatBox() {
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
-  const endRef = useRef<HTMLDivElement | null>(null);
+
+  // Scrollable container for messages (not the page)
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const didInitialSnapshot = useRef(false);
 
   // realtime messages
   useEffect(() => {
@@ -40,20 +43,32 @@ export default function ChatBox() {
         });
       });
       setMessages(list);
+      if (!didInitialSnapshot.current) {
+        didInitialSnapshot.current = true;
+      }
     });
     return () => unsub();
   }, []);
 
-  // auto-scroll
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Keep the internal list scrolled to bottom when new messages arrive
+  // without changing the PAGE scroll position.
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    // If user is already near the bottom OR it's the first load, stick to bottom.
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 60;
+
+    if (nearBottom || !didInitialSnapshot.current) {
+      // Scroll only the list container, not the page
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages.length]);
 
   async function onSend(e: FormEvent) {
     e.preventDefault();
     const trimmedName = name.trim().slice(0, 40);
     const trimmedText = text.trim().slice(0, 500);
-
     if (!trimmedName || !trimmedText) return;
 
     await addDoc(collection(db, "messages"), {
@@ -63,6 +78,10 @@ export default function ChatBox() {
     });
 
     setText("");
+
+    // After sending, ensure the list sticks to bottom
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }
 
   return (
@@ -71,8 +90,13 @@ export default function ChatBox() {
 
       {/* Scroll area */}
       <div
+        ref={listRef}
         className="rounded-md bg-gray-900/60 border border-gray-700 p-3 sm:p-4 
                    max-h-[46vh] sm:max-h-80 overflow-y-auto"
+        style={{
+          overscrollBehavior: "contain", // prevent scroll chaining to the page
+          scrollBehavior: "auto",        // avoid smooth page-like scrolling
+        }}
       >
         <ul className="space-y-2 text-sm sm:text-base">
           {messages.map((m) => (
@@ -82,7 +106,6 @@ export default function ChatBox() {
             </li>
           ))}
         </ul>
-        <div ref={endRef} />
       </div>
 
       {/* Input row */}
