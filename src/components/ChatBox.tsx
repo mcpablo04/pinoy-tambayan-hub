@@ -35,34 +35,24 @@ export default function ChatBox() {
 
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // Prefill display name once
   useEffect(() => {
     const display = profile?.displayName || user?.displayName || "";
     if (display && !name) setName(display);
   }, [profile?.displayName, user?.displayName, name]);
 
-  // Hard scroll helper: directly set scrollTop to the max.
+  // Hard pin to bottom (instant — no smooth)
   const hardScrollToBottom = () => {
     const el = listRef.current;
     if (!el) return;
-    // double RAF ensures DOM has laid out new rows before we measure
+    // double RAF: wait for DOM paint before measuring
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight; // newest fully visible
+        el.scrollTop = el.scrollHeight;
       });
     });
   };
 
-  // Keep pinned when images (avatars) load and change row height
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const onImgLoad = () => hardScrollToBottom();
-    el.addEventListener("load", onImgLoad, true);
-    return () => el.removeEventListener("load", onImgLoad, true);
-  }, []);
-
-  // Live messages — only last 20, chronological (newest at bottom)
+  // Live messages — only last 20; newest at bottom
   useEffect(() => {
     const q = query(
       collection(db, "messages"),
@@ -88,7 +78,7 @@ export default function ChatBox() {
         });
 
         setMessages(list);
-        hardScrollToBottom(); // ALWAYS pin after each snapshot
+        hardScrollToBottom(); // always pin after new snapshot
       },
       (e) => setErr(e?.message || "Failed to load chat.")
     );
@@ -122,13 +112,13 @@ export default function ChatBox() {
       }
 
       setText("");
-      hardScrollToBottom(); // snap right away after you send
+      hardScrollToBottom(); // pin immediately after your send
     } catch (e: any) {
       setErr(e?.message || "Failed to send. Check Firestore rules/project config.");
     }
   }
 
-  const disabled = loading && !user; // guests can still type while auth resolves
+  const disabled = loading && !user;
   const mePhoto = user?.photoURL || profile?.photoURL || undefined;
   const meInitial = (profile?.displayName || user?.displayName || name || "?")
     .charAt(0)
@@ -138,19 +128,29 @@ export default function ChatBox() {
     <div className="rounded-xl bg-gray-800/80 p-4 sm:p-6 shadow-lg border border-gray-700">
       <h3 className="text-lg font-semibold mb-3 sm:mb-4">Live Chat</h3>
 
-      {/* Fixed-height scroll area. Newest is at the BOTTOM. */}
+      {/* Fixed-height scroll area; a little bottom padding to avoid clipping */}
       <div
         ref={listRef}
         className="rounded-md bg-gray-900/60 border border-gray-700 p-3 sm:p-4
-                   h-80 sm:h-96 overflow-y-auto min-h-0"
+                   h-80 sm:h-96 overflow-y-auto min-h-0 pb-2"
       >
         <ul className="space-y-3 text-sm sm:text-base">
           {messages.map((m) => (
             <li key={m.id} className="flex items-start gap-3">
               {m.photoURL ? (
-                <img src={m.photoURL} alt={m.name} className="w-8 h-8 rounded-full object-cover" />
+                <img
+                  src={m.photoURL}
+                  alt={m.name}
+                  className="rounded-full object-cover"
+                  width={32} height={32}     // ⬅️ fixed intrinsic size prevents layout shift
+                  draggable={false}          // ⬅️ no ghost-drag preview
+                  loading="lazy"
+                />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-gray-300 text-xs">
+                <div
+                  className="bg-gray-700 text-gray-300 text-xs grid place-items-center rounded-full"
+                  style={{ width: 32, height: 32 }} // ⬅️ same fixed size
+                >
                   {m.name?.charAt(0)?.toUpperCase() || "?"}
                 </div>
               )}
@@ -170,9 +170,18 @@ export default function ChatBox() {
       >
         <div className="flex items-center gap-2 sm:gap-3">
           {mePhoto ? (
-            <img src={mePhoto} alt="You" className="w-9 h-9 rounded-full object-cover" />
+            <img
+              src={mePhoto}
+              alt="You"
+              className="rounded-full object-cover"
+              width={36} height={36}      // ⬅️ fixed size here too
+              draggable={false}
+            />
           ) : (
-            <div className="w-9 h-9 rounded-full bg-gray-700 flex items-center justify-center text-gray-300 text-sm">
+            <div
+              className="bg-gray-700 text-gray-300 text-sm grid place-items-center rounded-full"
+              style={{ width: 36, height: 36 }}
+            >
               {meInitial}
             </div>
           )}
@@ -188,8 +197,7 @@ export default function ChatBox() {
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={user ? "Message..." : "Message (guest)"
-          }
+          placeholder={user ? "Message..." : "Message (guest)"}
           disabled={disabled}
           className="flex-1 rounded-md bg-gray-700/90 text-white px-3 py-2 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
         />
