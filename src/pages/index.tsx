@@ -90,7 +90,8 @@ export default function Home() {
       <section className="py-8 sm:py-10 pb-24">
         <div className="mx-auto w-full max-w-6xl px-4">
           <h2 className="text-xl sm:text-2xl font-bold mb-3">Community Chat</h2>
-          <div className="mx-auto w-full max-w-3xl">
+          {/* ⬇️ Ensure the scrollable ChatBox can actually scroll within flex/grid parents */}
+          <div className="mx-auto w-full max-w-3xl min-h-0">
             <ChatBox />
           </div>
         </div>

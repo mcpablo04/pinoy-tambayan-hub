@@ -144,7 +144,7 @@ export default function ProfilePage() {
         const trimmedBase = base.slice(0, Math.max(3, 20 - suffix.length));
         const candidate = `${trimmedBase}${suffix}`;
 
-        // If already ours, keep it
+        // If already ours, keep it without touching /usernames
         if (current && candidate === current) {
           chosen = current;
           break;
@@ -153,19 +153,34 @@ export default function ProfilePage() {
         const unameRef = doc(db, "usernames", candidate);
         const unameSnap = await tx.get(unameRef);
 
-        // available OR already mapped to us
-        if (!unameSnap.exists() || (unameSnap.data() as any).uid === user.uid) {
+        if (!unameSnap.exists()) {
+          // claim brand new username
+          tx.set(unameRef, { uid: user.uid, createdAt: serverTimestamp() });
           // free previous mapping if changing
           if (current && current !== candidate) {
             tx.delete(doc(db, "usernames", current));
           }
-          // claim new mapping + update user doc
-          tx.set(unameRef, { uid: user.uid, createdAt: serverTimestamp() });
+          // update user doc
           tx.set(
             userRef,
             { username: candidate, usernameLower: candidate, updatedAt: serverTimestamp() },
             { merge: true }
           );
+          chosen = candidate;
+          break;
+        }
+
+        // taken by someone else or already ours:
+        if ((unameSnap.data() as any).uid === user.uid) {
+          // already ours; update user doc if needed but don't touch /usernames
+          if (current && current !== candidate) {
+            tx.delete(doc(db, "usernames", current));
+            tx.set(
+              userRef,
+              { username: candidate, usernameLower: candidate, updatedAt: serverTimestamp() },
+              { merge: true }
+            );
+          }
           chosen = candidate;
           break;
         }
@@ -178,7 +193,7 @@ export default function ProfilePage() {
     return chosen;
   }
 
-  // ---------- SAVE PROFILE (with unique display name) ----------
+  // ---------- SAVE PROFILE ----------
   const save = async () => {
     if (!user) return;
     setMsg(null);
@@ -199,7 +214,7 @@ export default function ProfilePage() {
       }
     }
 
-    // 2) Update display name in auth (and optionally in your user doc)
+    // 2) Update display name in auth (and user doc)
     if (newName && newName !== (profile?.displayName ?? "")) {
       await updateDisplayName(newName);
       await updateDoc(doc(db, "users", user.uid), {
