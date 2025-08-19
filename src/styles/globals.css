@@ -1,6 +1,6 @@
-/* src/styles/globals.css */
 @import "tailwindcss";
 
+/* === Theme tokens === */
 @theme inline {
   --color-darkbg: #0f1115;
   --color-lighttext: #eaeaea;
@@ -24,7 +24,7 @@ html, body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   height: 100%;
-  overflow-x: hidden;         /* hard-stop any horizontal scroll */
+  overflow-x: hidden;
 }
 
 /* Predictable sizing */
@@ -37,8 +37,24 @@ img, svg, video { max-width: 100%; height: auto; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* Optional card helper to match your theme */
 .card { @apply bg-card/80 rounded-lg p-4 border border-white/5; }
 
-/* DO NOT set min-width on all elements!  (this caused the vertical letters) */
-/* If you need it on a specific flex child, use Tailwind's `min-w-0` class locally. */
+/* ===========================
+   Avatar: force perfect circle
+   =========================== */
+.avatar {
+  width: 96px;              /* = w-24 */
+  height: 96px;             /* = h-24 */
+  border-radius: 9999px;    /* rounded-full */
+  overflow: hidden;
+  background: #1f2937;      /* gray-800 fallback */
+  display: inline-block;
+}
+
+.avatar > img {
+  width: 100% !important;   /* beat global height:auto interaction */
+  height: 100% !important;  /* <— key fix */
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}

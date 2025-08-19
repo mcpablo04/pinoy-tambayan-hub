@@ -8,7 +8,6 @@ import { auth, db } from "../firebase/clientApp";
 import { reload } from "firebase/auth";
 import { upload } from "@vercel/blob/client";
 import type { PutBlobResult } from "@vercel/blob";
-
 import {
   doc,
   runTransaction,
@@ -20,62 +19,83 @@ import {
   getDocs,
 } from "firebase/firestore";
 
-const toHandleBase = (name: string) => {
-  // only a–z 0–9 . _ - ; 3–20 chars target
-  const base = name
+/** Make TS happy even if profile has extra optional fields */
+type AnyProfile = {
+  displayName?: string | null;
+  photoURL?: string | null;
+  email?: string | null;
+  createdAt?: { seconds: number; nanoseconds?: number } | null;
+  usernameLower?: string | null;
+  username?: string | null;
+} | null;
+
+const toHandleBase = (name: string) =>
+  (name || "user")
     .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "")      // remove disallowed
-    .replace(/^[._-]+|[._-]+$/g, "")    // trim punctuation edges
-    .slice(0, 20);                      // cap length
-  return base || "user";
-};
+    .replace(/[^a-z0-9._-]+/g, "")
+    .replace(/^[._-]+|[._-]+$/g, "")
+    .slice(0, 20) || "user";
 
 export default function ProfilePage() {
   const { user, profile, loading, updateDisplayName, updatePhotoURL, signOutApp } = useAuth();
   const router = useRouter();
 
-  // Basic profile fields
-  const [name, setName]   = useState(profile?.displayName ?? "");
-  const [photo, setPhoto] = useState(profile?.photoURL ?? "");
-  const [msg, setMsg]     = useState<string | null>(null);
+  // cast to relaxed shape so TS doesn't complain about optional fields
+  const p = (profile ?? null) as AnyProfile;
 
-  // Avatar uploader UI state
-  const [uploadMsg,  setUploadMsg]  = useState<string | null>(null);
+  // UI state
+  const [name, setName] = useState<string>(p?.displayName ?? "");
+  const [photo, setPhoto] = useState<string>(p?.photoURL ?? "");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
 
-  // Redirect if not signed in
+  // redirect if not signed in
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
 
-  // Require email verification
+  // require email verification
   useEffect(() => {
     (async () => {
       if (loading || !auth.currentUser) return;
       try {
         await reload(auth.currentUser);
         if (!auth.currentUser.emailVerified) router.replace("/auth/verify-prompt");
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     })();
   }, [loading, router]);
 
-  // Sync local from profile
+  // sync local with profile
   useEffect(() => {
-    setName(profile?.displayName ?? "");
-    setPhoto(profile?.photoURL ?? "");
-  }, [profile?.displayName, profile?.photoURL]);
+    setName(p?.displayName ?? "");
+    setPhoto(p?.photoURL ?? "");
+  }, [p?.displayName, p?.photoURL]);
 
-  const currentLower = useMemo(
-    () =>
-      // @ts-ignore (usernameLower may not exist yet)
-      (profile?.usernameLower as string | undefined)?.toLowerCase() ??
-      // @ts-ignore (older profiles might have "username")
-      (profile?.username as string | undefined)?.toLowerCase() ??
-      "",
-    [profile]
-  );
+  // derive current handle if present (TS-safe)
+  const currentLower = useMemo(() => {
+    const lower =
+      (p?.usernameLower ?? p?.username ?? "")?.toString().toLowerCase();
+    return lower || "";
+  }, [p?.usernameLower, p?.username]);
 
-  // ---------- AVATAR UPLOAD ----------
+  // joined date (Firestore -> Auth fallback)
+  const joinedDate = useMemo(() => {
+    const ts = p?.createdAt?.seconds
+      ? new Date(p.createdAt.seconds * 1000)
+      : auth.currentUser?.metadata?.creationTime
+      ? new Date(auth.currentUser.metadata.creationTime)
+      : null;
+
+    return ts
+      ? ts.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+      : null;
+  }, [p?.createdAt?.seconds]);
+
+  // upload avatar
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputEl = e.currentTarget;
     const f = inputEl.files?.[0];
@@ -103,7 +123,6 @@ export default function ProfilePage() {
       await updatePhotoURL(blob.url);
       setPhoto(blob.url);
 
-      // (Optional) keep user doc in sync for convenience
       await updateDoc(doc(db, "users", user.uid), {
         photoURL: blob.url,
         updatedAt: serverTimestamp(),
@@ -120,13 +139,12 @@ export default function ProfilePage() {
     }
   };
 
-  // ---------- CLAIM UNIQUE USERNAME FROM DISPLAY NAME ----------
+  // claim a unique handle from display name
   async function claimUsernameFromDisplayName(displayName: string) {
     if (!user) return null;
 
     const baseRaw = toHandleBase(displayName || "user");
-    // ensure at least 3 chars (pad with uid if needed)
-    let base = baseRaw.length >= 3 ? baseRaw : `${baseRaw}${user.uid.slice(0, 3 - baseRaw.length)}`;
+    const base = baseRaw.length >= 3 ? baseRaw : `${baseRaw}${user.uid.slice(0, 3 - baseRaw.length)}`;
 
     let chosen: string | null = null;
 
@@ -136,15 +154,12 @@ export default function ProfilePage() {
       const current =
         (userSnap.exists() ? ((userSnap.data() as any).usernameLower as string | null) : null) ?? null;
 
-      // Try base, base1, base2, … until free
       let i = 0;
       while (true) {
         const suffix = i === 0 ? "" : String(i);
-        // keep within 20 chars total
         const trimmedBase = base.slice(0, Math.max(3, 20 - suffix.length));
         const candidate = `${trimmedBase}${suffix}`;
 
-        // If already ours, keep it without touching /usernames
         if (current && candidate === current) {
           chosen = current;
           break;
@@ -154,13 +169,10 @@ export default function ProfilePage() {
         const unameSnap = await tx.get(unameRef);
 
         if (!unameSnap.exists()) {
-          // claim brand new username
           tx.set(unameRef, { uid: user.uid, createdAt: serverTimestamp() });
-          // free previous mapping if changing
           if (current && current !== candidate) {
             tx.delete(doc(db, "usernames", current));
           }
-          // update user doc
           tx.set(
             userRef,
             { username: candidate, usernameLower: candidate, updatedAt: serverTimestamp() },
@@ -170,9 +182,7 @@ export default function ProfilePage() {
           break;
         }
 
-        // taken by someone else or already ours:
         if ((unameSnap.data() as any).uid === user.uid) {
-          // already ours; update user doc if needed but don't touch /usernames
           if (current && current !== candidate) {
             tx.delete(doc(db, "usernames", current));
             tx.set(
@@ -193,7 +203,7 @@ export default function ProfilePage() {
     return chosen;
   }
 
-  // ---------- SAVE PROFILE ----------
+  // save
   const save = async () => {
     if (!user) return;
     setMsg(null);
@@ -201,8 +211,8 @@ export default function ProfilePage() {
     const newName  = name.trim();
     const newPhoto = (photo ?? "").trim();
 
-    // 1) Enforce UNIQUE DISPLAY NAME (case-insensitive)
-    if (newName && newName !== (profile?.displayName ?? "")) {
+    // ensure unique display name
+    if (newName && newName !== (p?.displayName ?? "")) {
       const qName = query(
         collection(db, "users"),
         where("displayNameLower", "==", newName.toLowerCase())
@@ -214,8 +224,8 @@ export default function ProfilePage() {
       }
     }
 
-    // 2) Update display name in auth (and user doc)
-    if (newName && newName !== (profile?.displayName ?? "")) {
+    // update display name
+    if (newName && newName !== (p?.displayName ?? "")) {
       await updateDisplayName(newName);
       await updateDoc(doc(db, "users", user.uid), {
         displayName: newName,
@@ -224,8 +234,8 @@ export default function ProfilePage() {
       });
     }
 
-    // 3) Update photo if changed (keep user doc in sync)
-    if (newPhoto !== (profile?.photoURL ?? "")) {
+    // update photo if changed
+    if (newPhoto !== (p?.photoURL ?? "")) {
       await updatePhotoURL(newPhoto);
       await updateDoc(doc(db, "users", user.uid), {
         photoURL: newPhoto,
@@ -233,14 +243,9 @@ export default function ProfilePage() {
       });
     }
 
-    // 4) Ensure UNIQUE USERNAME derived from display name
+    // ensure unique username derived from display name
     const chosen = await claimUsernameFromDisplayName(newName || "user");
-    if (chosen) {
-      setMsg(chosen !== currentLower ? `Saved. Your handle is @${chosen}.` : "Profile updated!");
-    } else {
-      setMsg("Profile updated!");
-    }
-
+    setMsg(chosen && chosen !== currentLower ? `Saved. Your handle is @${chosen}.` : "Profile updated!");
     setTimeout(() => setMsg(null), 2000);
   };
 
@@ -252,20 +257,25 @@ export default function ProfilePage() {
 
       {/* Avatar + basic info */}
       <div className="flex items-center gap-4 mb-6">
-        {photo ? (
-          <img
-            src={photo}
-            alt="avatar"
-            className="w-24 h-24 rounded-full object-cover"
-          />
-        ) : (
-          <div className="w-24 h-24 rounded-full bg-gray-800 grid place-items-center">
-            <span className="text-3xl">👤</span>
-          </div>
-        )}
+        <div className="avatar">
+          {photo ? (
+            <img src={photo} alt="avatar" />
+          ) : (
+            /* fallback when no photo */
+            <img src="data:image/svg+xml;utf8,\
+              <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\
+              <rect width='100' height='100' fill='%231f2937'/>\
+              <circle cx='50' cy='38' r='18' fill='%234b5563'/>\
+              <rect x='22' y='62' width='56' height='24' rx='12' fill='%234b5563'/>\
+              </svg>" alt="avatar placeholder" />
+          )}
+        </div>
+
         <div>
-          <div className="text-lg font-semibold">{profile?.displayName || "No name yet"}</div>
-          <div className="text-sm text-gray-400">{profile?.email}</div>
+          <div className="text-lg font-semibold">{p?.displayName || "No name yet"}</div>
+          <div className="text-sm text-gray-400">{p?.email}</div>
+          {/* Joined date */}
+          {joinedDate && <div className="text-xs text-gray-500">Joined {joinedDate}</div>}
         </div>
       </div>
 
@@ -290,17 +300,8 @@ export default function ProfilePage() {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <input
-          className="w-full p-3 rounded bg-gray-800 text-white placeholder-gray-400"
-          placeholder="Photo URL (https://...)"
-          value={photo}
-          onChange={(e) => setPhoto(e.target.value)}
-        />
 
-        <button
-          onClick={save}
-          className="bg-blue-600 hover:bg-blue-500 rounded p-3 font-semibold"
-        >
+        <button onClick={save} className="bg-blue-600 hover:bg-blue-500 rounded p-3 font-semibold">
           Save changes
         </button>
         {msg && <div className="text-green-400 text-sm">{msg}</div>}
