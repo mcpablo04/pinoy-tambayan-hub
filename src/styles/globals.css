@@ -58,3 +58,23 @@ img, svg, video { max-width: 100%; height: auto; }
   object-position: center;
   display: block;
 }
+
+/* === Reusable circular avatar sizes === */
+.avatar {
+  border-radius: 9999px;     /* rounded-full */
+  overflow: hidden;
+  background: #1f2937;       /* gray-800 fallback */
+  display: inline-block;
+}
+.avatar > img {
+  width: 100% !important;    /* beat global img { height:auto } */
+  height: 100% !important;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+/* Sizes */
+.avatar-sm { width: 32px; height: 32px; }   /* chat list */
+.avatar-md { width: 36px; height: 36px; }   /* input row / navbar */
+.avatar-lg { width: 96px; height: 96px; }   /* profile page */

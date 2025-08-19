@@ -44,7 +44,6 @@ export default function ChatBox() {
   const hardScrollToBottom = () => {
     const el = listRef.current;
     if (!el) return;
-    // double RAF: wait for DOM paint before measuring
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         el.scrollTop = el.scrollHeight;
@@ -78,7 +77,7 @@ export default function ChatBox() {
         });
 
         setMessages(list);
-        hardScrollToBottom(); // always pin after new snapshot
+        hardScrollToBottom();
       },
       (e) => setErr(e?.message || "Failed to load chat.")
     );
@@ -112,7 +111,7 @@ export default function ChatBox() {
       }
 
       setText("");
-      hardScrollToBottom(); // pin immediately after your send
+      hardScrollToBottom();
     } catch (e: any) {
       setErr(e?.message || "Failed to send. Check Firestore rules/project config.");
     }
@@ -128,7 +127,7 @@ export default function ChatBox() {
     <div className="rounded-xl bg-gray-800/80 p-4 sm:p-6 shadow-lg border border-gray-700">
       <h3 className="text-lg font-semibold mb-3 sm:mb-4">Live Chat</h3>
 
-      {/* Fixed-height scroll area; a little bottom padding to avoid clipping */}
+      {/* Fixed-height scroll area */}
       <div
         ref={listRef}
         className="rounded-md bg-gray-900/60 border border-gray-700 p-3 sm:p-4
@@ -138,19 +137,11 @@ export default function ChatBox() {
           {messages.map((m) => (
             <li key={m.id} className="flex items-start gap-3">
               {m.photoURL ? (
-                <img
-                  src={m.photoURL}
-                  alt={m.name}
-                  className="rounded-full object-cover"
-                  width={32} height={32}     // ⬅️ fixed intrinsic size prevents layout shift
-                  draggable={false}          // ⬅️ no ghost-drag preview
-                  loading="lazy"
-                />
+                <div className="avatar avatar-sm">
+                  <img src={m.photoURL} alt={m.name} draggable={false} loading="lazy" />
+                </div>
               ) : (
-                <div
-                  className="bg-gray-700 text-gray-300 text-xs grid place-items-center rounded-full"
-                  style={{ width: 32, height: 32 }} // ⬅️ same fixed size
-                >
+                <div className="avatar avatar-sm grid place-items-center text-xs text-gray-300">
                   {m.name?.charAt(0)?.toUpperCase() || "?"}
                 </div>
               )}
@@ -170,18 +161,11 @@ export default function ChatBox() {
       >
         <div className="flex items-center gap-2 sm:gap-3">
           {mePhoto ? (
-            <img
-              src={mePhoto}
-              alt="You"
-              className="rounded-full object-cover"
-              width={36} height={36}      // ⬅️ fixed size here too
-              draggable={false}
-            />
+            <div className="avatar avatar-md">
+              <img src={mePhoto} alt="You" draggable={false} />
+            </div>
           ) : (
-            <div
-              className="bg-gray-700 text-gray-300 text-sm grid place-items-center rounded-full"
-              style={{ width: 36, height: 36 }}
-            >
+            <div className="avatar avatar-md grid place-items-center text-sm text-gray-300">
               {meInitial}
             </div>
           )}

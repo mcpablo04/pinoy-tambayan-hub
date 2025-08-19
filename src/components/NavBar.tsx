@@ -1,3 +1,4 @@
+// src/components/NavBar.tsx
 "use client";
 
 import { useState } from "react";
@@ -5,11 +6,11 @@ import Link from "next/link";
 import { useAuth } from "../context/AuthContext";
 
 const LINKS = [
-  { label: "Home",    href: "/" },
-  { label: "Radio",   href: "/radio" },
+  { label: "Home", href: "/" },
+  { label: "Radio", href: "/radio" },
   { label: "Weather", href: "/weather" },
-  { label: "News",    href: "/news" },
-  { label: "Events",  href: "/events" },
+  { label: "News", href: "/news" },
+  { label: "Events", href: "/events" },
   { label: "Contact", href: "/contact" },
   { label: "Privacy", href: "/privacy" },
 ];
@@ -19,9 +20,11 @@ export default function NavBar() {
   const { user, profile, signOutApp } = useAuth();
 
   const handleLinkClick = () => setOpen(false);
+  const photo = profile?.photoURL || user?.photoURL || null;
+  const displayName = profile?.displayName || user?.displayName || "Profile";
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 bg-gray-900 bg-opacity-90 backdrop-blur-sm">
+    <header className="fixed inset-x-0 top-0 z-50 bg-gray-900/90 backdrop-blur-sm">
       <div className="max-w-6xl mx-auto flex items-center justify-between p-4">
         {/* Logo */}
         <Link
@@ -29,7 +32,8 @@ export default function NavBar() {
           className="flex items-center text-white text-2xl font-bold"
           onClick={handleLinkClick}
         >
-          <span className="mr-2">🎵</span> Pinoy Tambayan Hub
+          <span className="mr-2">🎵</span>
+          Pinoy Tambayan Hub
         </Link>
 
         {/* Desktop menu */}
@@ -47,19 +51,21 @@ export default function NavBar() {
           {/* Auth area */}
           {user ? (
             <div className="flex items-center gap-3 pl-3 ml-2 border-l border-gray-700">
-              <Link href="/profile" className="flex items-center gap-2 hover:opacity-90">
-                {profile?.photoURL ? (
-                  <img
-                    src={profile.photoURL}
-                    alt="avatar"
-                    className="w-8 h-8 rounded-full object-cover"
-                  />
+              <Link
+                href="/profile"
+                className="flex items-center gap-2 hover:opacity-90"
+                onClick={handleLinkClick}
+              >
+                {photo ? (
+                  <div className="avatar avatar-sm">
+                    <img src={photo} alt="avatar" />
+                  </div>
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-gray-700 grid place-items-center">👤</div>
+                  <div className="avatar avatar-sm grid place-items-center text-sm text-gray-300">
+                    👤
+                  </div>
                 )}
-                <span className="text-gray-200 text-sm">
-                  {profile?.displayName || "Profile"}
-                </span>
+                <span className="text-gray-200 text-sm">{displayName}</span>
               </Link>
               <button
                 onClick={signOutApp}
@@ -92,6 +98,43 @@ export default function NavBar() {
       {/* Mobile dropdown */}
       {open && (
         <div className="md:hidden bg-gray-800 border-t border-gray-700">
+          {/* Mobile auth header */}
+          <div className="px-4 py-3 flex items-center justify-between border-b border-gray-700">
+            {user ? (
+              <Link
+                href="/profile"
+                className="flex items-center gap-3"
+                onClick={handleLinkClick}
+              >
+                {photo ? (
+                  <div className="avatar avatar-sm">
+                    <img src={photo} alt="avatar" />
+                  </div>
+                ) : (
+                  <div className="avatar avatar-sm grid place-items-center text-sm text-gray-300">
+                    👤
+                  </div>
+                )}
+                <span className="text-gray-200">{displayName}</span>
+              </Link>
+            ) : (
+              <Link
+                href="/login"
+                className="text-blue-400"
+                onClick={handleLinkClick}
+              >
+                Login / Register
+              </Link>
+            )}
+
+            {user && (
+              <button onClick={signOutApp} className="text-red-300">
+                Sign out
+              </button>
+            )}
+          </div>
+
+          {/* Mobile links */}
           {LINKS.map(({ label, href }) => (
             <Link
               key={href}
@@ -102,24 +145,6 @@ export default function NavBar() {
               {label}
             </Link>
           ))}
-
-          {/* Mobile auth links */}
-          <div className="px-4 py-3 border-t border-gray-700">
-            {user ? (
-              <div className="flex items-center justify-between">
-                <Link href="/profile" className="text-blue-400" onClick={handleLinkClick}>
-                  Profile
-                </Link>
-                <button onClick={signOutApp} className="text-red-300">
-                  Sign out
-                </button>
-              </div>
-            ) : (
-              <Link href="/login" className="text-blue-400" onClick={handleLinkClick}>
-                Login / Register
-              </Link>
-            )}
-          </div>
         </div>
       )}
     </header>
