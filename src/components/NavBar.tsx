@@ -1,4 +1,3 @@
-// src/components/NavBar.tsx
 "use client";
 
 import { useState } from "react";
@@ -11,8 +10,7 @@ const LINKS = [
   { label: "Weather", href: "/weather" },
   { label: "News", href: "/news" },
   { label: "Events", href: "/events" },
-  { label: "Contact", href: "/contact" },
-  { label: "Privacy", href: "/privacy" },
+  // 👇 removed Contact + Privacy (moved to Footer)
 ];
 
 export default function NavBar() {
