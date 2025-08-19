@@ -19,7 +19,6 @@ import {
   getDocs,
 } from "firebase/firestore";
 
-/** Make TS happy even if profile has extra optional fields */
 type AnyProfile = {
   displayName?: string | null;
   photoURL?: string | null;
@@ -40,10 +39,8 @@ export default function ProfilePage() {
   const { user, profile, loading, updateDisplayName, updatePhotoURL, signOutApp } = useAuth();
   const router = useRouter();
 
-  // cast to relaxed shape so TS doesn't complain about optional fields
   const p = (profile ?? null) as AnyProfile;
 
-  // UI state
   const [name, setName] = useState<string>(p?.displayName ?? "");
   const [photo, setPhoto] = useState<string>(p?.photoURL ?? "");
   const [msg, setMsg] = useState<string | null>(null);
@@ -51,38 +48,31 @@ export default function ProfilePage() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
 
-  // redirect if not signed in
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
 
-  // require email verification
   useEffect(() => {
     (async () => {
       if (loading || !auth.currentUser) return;
       try {
         await reload(auth.currentUser);
         if (!auth.currentUser.emailVerified) router.replace("/auth/verify-prompt");
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     })();
   }, [loading, router]);
 
-  // sync local with profile
   useEffect(() => {
     setName(p?.displayName ?? "");
     setPhoto(p?.photoURL ?? "");
   }, [p?.displayName, p?.photoURL]);
 
-  // derive current handle if present (TS-safe)
   const currentLower = useMemo(() => {
     const lower =
       (p?.usernameLower ?? p?.username ?? "")?.toString().toLowerCase();
     return lower || "";
   }, [p?.usernameLower, p?.username]);
 
-  // joined date (Firestore -> Auth fallback)
   const joinedDate = useMemo(() => {
     const ts = p?.createdAt?.seconds
       ? new Date(p.createdAt.seconds * 1000)
@@ -95,7 +85,6 @@ export default function ProfilePage() {
       : null;
   }, [p?.createdAt?.seconds]);
 
-  // upload avatar
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputEl = e.currentTarget;
     const f = inputEl.files?.[0];
@@ -139,7 +128,6 @@ export default function ProfilePage() {
     }
   };
 
-  // claim a unique handle from display name
   async function claimUsernameFromDisplayName(displayName: string) {
     if (!user) return null;
 
@@ -203,13 +191,18 @@ export default function ProfilePage() {
     return chosen;
   }
 
-  // save
   const save = async () => {
     if (!user) return;
     setMsg(null);
 
     const newName  = name.trim();
     const newPhoto = (photo ?? "").trim();
+
+    // validate name length
+    if (newName.length < 3 || newName.length > 40) {
+      setMsg("Display name must be between 3 and 40 characters.");
+      return;
+    }
 
     // ensure unique display name
     if (newName && newName !== (p?.displayName ?? "")) {
@@ -224,7 +217,6 @@ export default function ProfilePage() {
       }
     }
 
-    // update display name
     if (newName && newName !== (p?.displayName ?? "")) {
       await updateDisplayName(newName);
       await updateDoc(doc(db, "users", user.uid), {
@@ -234,7 +226,6 @@ export default function ProfilePage() {
       });
     }
 
-    // update photo if changed
     if (newPhoto !== (p?.photoURL ?? "")) {
       await updatePhotoURL(newPhoto);
       await updateDoc(doc(db, "users", user.uid), {
@@ -243,7 +234,6 @@ export default function ProfilePage() {
       });
     }
 
-    // ensure unique username derived from display name
     const chosen = await claimUsernameFromDisplayName(newName || "user");
     setMsg(chosen && chosen !== currentLower ? `Saved. Your handle is @${chosen}.` : "Profile updated!");
     setTimeout(() => setMsg(null), 2000);
@@ -255,13 +245,11 @@ export default function ProfilePage() {
     <div className="pt-20 max-w-2xl mx-auto px-4">
       <h1 className="text-3xl font-bold mb-6">Your Profile</h1>
 
-      {/* Avatar + basic info */}
       <div className="flex items-center gap-4 mb-6">
         <div className="avatar">
           {photo ? (
             <img src={photo} alt="avatar" />
           ) : (
-            /* fallback when no photo */
             <img src="data:image/svg+xml;utf8,\
               <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\
               <rect width='100' height='100' fill='%231f2937'/>\
@@ -274,12 +262,10 @@ export default function ProfilePage() {
         <div>
           <div className="text-lg font-semibold">{p?.displayName || "No name yet"}</div>
           <div className="text-sm text-gray-400">{p?.email}</div>
-          {/* Joined date */}
           {joinedDate && <div className="text-xs text-gray-500">Joined {joinedDate}</div>}
         </div>
       </div>
 
-      {/* Avatar uploader */}
       <div className="mb-6 space-y-2">
         <label className="block text-sm text-gray-300">Profile photo</label>
         <input
@@ -292,13 +278,13 @@ export default function ProfilePage() {
         {uploadMsg && <div className="text-sm text-gray-300">{uploadMsg}</div>}
       </div>
 
-      {/* Profile fields */}
       <div className="space-y-3">
         <input
           className="w-full p-3 rounded bg-gray-800 text-white placeholder-gray-400"
-          placeholder="Display name (must be unique)"
+          placeholder="Display name (3–40 chars, must be unique)"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          maxLength={40} // enforce limit at input
         />
 
         <button onClick={save} className="bg-blue-600 hover:bg-blue-500 rounded p-3 font-semibold">
