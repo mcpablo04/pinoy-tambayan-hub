@@ -8,40 +8,8 @@ import ChatBox from "../components/ChatBox";
 import { usePlayer } from "../context/PlayerContext";
 import { STATIONS } from "../data/stations";
 
-// Helper: quickly get a station by id (for logos/titles)
 const byId = (id: string) => STATIONS.find((s) => s.id === id);
 
-const CARDS = [
-  {
-    href: "/news",
-    // Use a news/talk station logo
-    stationId: "dzrh", // 666 AM DZRH
-    title: "OPM & Community News",
-    blurb: "Gig updates & releases",
-  },
-  {
-    href: "/events",
-    // A recognizable station logo to visually brand the card
-    stationId: "star-fm",
-    title: "Events",
-    blurb: "Concerts & meetups",
-  },
-  {
-    href: "/radio",
-    stationId: "love-radio",
-    title: "Live Radio",
-    blurb: "Pinoy stations",
-    onClick: "showUI",
-  },
-  {
-    href: "/news",
-    stationId: "dzmm",
-    title: "Latest News",
-    blurb: "Headlines & updates",
-  },
-];
-
-// Featured stations list (logos shown instead of emoji)
 const FEATURED_IDS = [
   "love-radio",
   "easy-rock",
@@ -57,7 +25,6 @@ export default function Home() {
   const { setShowUI } = usePlayer();
   const heroRef = useRef<HTMLElement | null>(null);
 
-  // Avoid initial scroll/focus jumps on load
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
     heroRef.current?.scrollIntoView({ block: "start", inline: "nearest" });
@@ -68,7 +35,6 @@ export default function Home() {
 
   return (
     <>
-      {/* HERO */}
       <section ref={heroRef} className="pt-20 sm:pt-24 pb-8 bg-darkbg text-lighttext">
         <div className="mx-auto max-w-6xl px-4">
           <div className="grid md:grid-cols-2 gap-8 items-center">
@@ -101,61 +67,62 @@ export default function Home() {
             </div>
 
             {/* Quick links / cards */}
-<div className="grid grid-cols-2 gap-3 md:gap-4">
-  <Link href="/news" className="card hover:bg-card transition">
-    <div className="flex items-center gap-3">
-      <div className="p-2 rounded-lg bg-gradient-to-tr from-blue-500 to-cyan-400">
-        <span className="text-white text-xl">📰</span>
-      </div>
-      <div>
-        <h3 className="font-semibold">OPM & Community News</h3>
-        <p className="text-sm text-gray-400">Gig updates & releases</p>
-      </div>
-    </div>
-  </Link>
+            <div className="grid grid-cols-2 gap-3 md:gap-4">
+              {/* CHANGED: vibe = pocketbook-style drama/romance */}
+              <Link href="/stories" className="card hover:bg-card transition">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-gradient-to-tr from-blue-500 to-cyan-400">
+                    <span className="text-white text-xl">📖</span>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Pocketbook Stories</h3>
+                    <p className="text-sm text-gray-400">Drama • Romance • One-shots</p>
+                  </div>
+                </div>
+              </Link>
 
-  <Link href="/events" className="card hover:bg-card transition">
-    <div className="flex items-center gap-3">
-      <div className="p-2 rounded-lg bg-gradient-to-tr from-pink-500 to-purple-500">
-        <span className="text-white text-xl">📅</span>
-      </div>
-      <div>
-        <h3 className="font-semibold">Events</h3>
-        <p className="text-sm text-gray-400">Concerts & meetups</p>
-      </div>
-    </div>
-  </Link>
+              <Link href="/events" className="card hover:bg-card transition">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-gradient-to-tr from-pink-500 to-purple-500">
+                    <span className="text-white text-xl">📅</span>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Events</h3>
+                    <p className="text-sm text-gray-400">Concerts & meetups</p>
+                  </div>
+                </div>
+              </Link>
 
-  <Link href="/radio" onClick={() => setShowUI(true)} className="card hover:bg-card transition">
-    <div className="flex items-center gap-3">
-      <div className="p-2 rounded-lg bg-gradient-to-tr from-green-500 to-emerald-400">
-        <span className="text-white text-xl">📻</span>
-      </div>
-      <div>
-        <h3 className="font-semibold">Live Radio</h3>
-        <p className="text-sm text-gray-400">Pinoy stations</p>
-      </div>
-    </div>
-  </Link>
+              <Link href="/radio" onClick={() => setShowUI(true)} className="card hover:bg-card transition">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-gradient-to-tr from-green-500 to-emerald-400">
+                    <span className="text-white text-xl">📻</span>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Live Radio</h3>
+                    <p className="text-sm text-gray-400">Pinoy stations</p>
+                  </div>
+                </div>
+              </Link>
 
-  <Link href="/news" className="card hover:bg-card transition">
-    <div className="flex items-center gap-3">
-      <div className="p-2 rounded-lg bg-gradient-to-tr from-orange-500 to-yellow-400">
-        <span className="text-white text-xl">🗞️</span>
-      </div>
-      <div>
-        <h3 className="font-semibold">Latest News</h3>
-        <p className="text-sm text-gray-400">Headlines & updates</p>
-      </div>
-    </div>
-  </Link>
-</div>
+              <Link href="/news" className="card hover:bg-card transition">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-gradient-to-tr from-orange-500 to-yellow-400">
+                    <span className="text-white text-xl">🗞️</span>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Latest News</h3>
+                    <p className="text-sm text-gray-400">Headlines & updates</p>
+                  </div>
+                </div>
+              </Link>
+            </div>
 
           </div>
         </div>
       </section>
 
-      {/* FEATURED STATIONS (logos) */}
+      {/* FEATURED STATIONS */}
       <section className="py-8 sm:py-10">
         <div className="mx-auto w-full max-w-6xl px-4">
           <h2 className="text-xl sm:text-2xl font-bold mb-3">Featured Stations</h2>
@@ -219,7 +186,7 @@ export default function Home() {
       <section className="py-8 sm:py-10 pb-24">
         <div className="mx-auto w-full max-w-6xl px-4">
           <h2 className="text-xl sm:text-2xl font-bold mb-3">Community Chat</h2>
-        <div className="mx-auto w-full max-w-3xl min-h-0">
+          <div className="mx-auto w-full max-w-3xl min-h-0">
             <ChatBox />
           </div>
         </div>
@@ -265,7 +232,7 @@ export default function Home() {
             <h3 className="text-lg font-semibold">Get updates</h3>
             <p className="text-gray-300 text-sm">Be the first to know about new stations and features.</p>
             <form
-              action="https://formspree.io/f/your-form-id" // ← replace with your Formspree endpoint
+              action="https://formspree.io/f/your-form-id"
               method="POST"
               className="mt-3 flex flex-col sm:flex-row gap-2"
             >

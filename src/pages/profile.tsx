@@ -1,7 +1,8 @@
+// src/pages/profile.tsx
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/router";
 import { useAuth } from "../context/AuthContext";
 import { auth, db } from "../firebase/clientApp";
@@ -53,6 +54,9 @@ type MyComment = {
   createdAt?: Timestamp;
 };
 
+const INITIAL_LIMIT = 3;
+const ALL_LIMIT = 100;
+
 const toHandleBase = (name: string) =>
   (name || "user")
     .toLowerCase()
@@ -69,34 +73,51 @@ export default function ProfilePage() {
 
   const p = (profile ?? null) as AnyProfile;
 
+  // Editable fields
   const [name, setName] = useState<string>(p?.displayName ?? "");
   const [photo, setPhoto] = useState<string>(p?.photoURL ?? "");
   const [msg, setMsg] = useState<string | null>(null);
 
+  // Upload state
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
 
+  // Stats
   const [storyCount, setStoryCount] = useState<number | null>(null);
   const [commentCount, setCommentCount] = useState<number | null>(null);
+
+  // Lists + loading
   const [stories, setStories] = useState<MyStory[]>([]);
   const [comments, setComments] = useState<MyComment[]>([]);
+  const [storiesLoading, setStoriesLoading] = useState(true);
+  const [commentsLoading, setCommentsLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
+
+  // Limits & “view all”
+  const [storiesLimit, setStoriesLimit] = useState(INITIAL_LIMIT);
+  const [commentsLimit, setCommentsLimit] = useState(INITIAL_LIMIT);
+
   const [countNote, setCountNote] = useState<string | null>(null);
 
+  // Redirect if not signed-in
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
 
+  // Email verify prompt (optional)
   useEffect(() => {
     (async () => {
       if (loading || !auth.currentUser) return;
       try {
         await reload(auth.currentUser);
         if (!auth.currentUser.emailVerified) router.replace("/auth/verify-prompt");
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     })();
   }, [loading, router]);
 
+  // Sync local form with profile
   useEffect(() => {
     setName(p?.displayName ?? "");
     setPhoto(p?.photoURL ?? "");
@@ -113,13 +134,12 @@ export default function ProfilePage() {
       : auth.currentUser?.metadata?.creationTime
       ? new Date(auth.currentUser.metadata.creationTime)
       : null;
-
     return ts
       ? ts.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
       : null;
   }, [p?.createdAt?.seconds]);
 
-  // Upload avatar
+  // -------- Avatar Upload --------
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputEl = e.currentTarget;
     const f = inputEl.files?.[0];
@@ -163,7 +183,7 @@ export default function ProfilePage() {
     }
   };
 
-  // Username claim
+  // -------- Username claim --------
   async function claimUsernameFromDisplayName(displayName: string) {
     if (!user) return null;
 
@@ -229,7 +249,7 @@ export default function ProfilePage() {
     return chosen;
   }
 
-  // Save profile
+  // -------- Save profile --------
   const save = async () => {
     if (!user) return;
     setMsg(null);
@@ -242,6 +262,7 @@ export default function ProfilePage() {
       return;
     }
 
+    // Ensure unique display name (ignore self)
     if (newName && newName !== (p?.displayName ?? "")) {
       const qName = query(collection(db, "users"), where("displayNameLower", "==", newName.toLowerCase()));
       const snap = await getDocs(qName);
@@ -271,8 +292,42 @@ export default function ProfilePage() {
     setTimeout(() => setMsg(null), 2000);
   };
 
-  // Fallback loader if CG index isn’t ready
-  async function fallbackLoadMyComments(uid: string): Promise<MyComment[]> {
+  // -------- Loaders --------
+  const loadMyStories = useCallback(
+    async (uid: string, lim: number) => {
+      setStoriesLoading(true);
+      try {
+        const storiesQ = query(
+          collection(db, "stories"),
+          where("authorId", "==", uid),
+          orderBy("createdAt", "desc"),
+          limit(lim)
+        );
+        const sSnap = await getDocs(storiesQ);
+        const sList: MyStory[] = [];
+        sSnap.forEach((d) => {
+          const s = d.data() as any;
+          sList.push({
+            id: d.id,
+            title: s.title,
+            slug: s.slug ?? null,
+            status: s.status,
+            visibility: s.visibility,
+            createdAt: s.createdAt,
+          });
+        });
+        setStories(sList);
+      } catch (e) {
+        console.warn("Stories list error:", (e as FirebaseError)?.message);
+        setStories([]);
+      } finally {
+        setStoriesLoading(false);
+      }
+    },
+    []
+  );
+
+  async function fallbackLoadMyComments(uid: string, lim: number): Promise<MyComment[]> {
     const recentStoriesSnap = await getDocs(
       query(collection(db, "stories"), orderBy("createdAt", "desc"), limit(40))
     );
@@ -298,7 +353,7 @@ export default function ProfilePage() {
           createdAt: data.createdAt,
         });
       });
-      if (collected.length >= 20) break;
+      if (collected.length >= lim) break;
     }
 
     collected.sort((a, b) => {
@@ -307,68 +362,21 @@ export default function ProfilePage() {
       return tb - ta;
     });
 
-    return collected.slice(0, 20);
+    return collected.slice(0, lim);
   }
 
-  // Load activity (uses CG index: authorId ASC + createdAt DESC)
-  useEffect(() => {
-    (async () => {
-      if (!user?.uid) {
-        setStatsLoading(false);
-        return;
-      }
-
+  const loadMyComments = useCallback(
+    async (uid: string, lim: number) => {
+      setCommentsLoading(true);
       setCountNote(null);
-
-      const storiesQ = query(collection(db, "stories"), where("authorId", "==", user.uid));
-      const commentsQ = query(
-        collectionGroup(db, "comments"),
-        where("authorId", "==", user.uid),
-        orderBy("createdAt", "desc")
-      );
-
       try {
-        const sCountSnap = await getCountFromServer(storiesQ);
-        setStoryCount(sCountSnap.data().count);
-      } catch (e) {
-        console.warn("Story count error:", (e as FirebaseError)?.message);
-        setStoryCount(null);
-      }
-
-      try {
-        const cCountSnap = await getCountFromServer(commentsQ);
-        setCommentCount(cCountSnap.data().count);
-      } catch (e) {
-        const err = e as FirebaseError;
-        console.warn("Comment count error:", err?.code, err?.message);
-        setCommentCount(null);
-        setCountNote(
-          "Comment count needs a Firestore collection-group index for `comments` with fields: authorId ASC, createdAt DESC."
+        const commentsQ = query(
+          collectionGroup(db, "comments"),
+          where("authorId", "==", uid),
+          orderBy("createdAt", "desc"),
+          limit(lim)
         );
-      }
-
-      try {
-        const sSnap = await getDocs(query(storiesQ, orderBy("createdAt", "desc"), limit(20)));
-        const sList: MyStory[] = [];
-        sSnap.forEach((d) => {
-          const s = d.data() as any;
-          sList.push({
-            id: d.id,
-            title: s.title,
-            slug: s.slug ?? null,
-            status: s.status,
-            visibility: s.visibility,
-            createdAt: s.createdAt,
-          });
-        });
-        setStories(sList);
-      } catch (e) {
-        console.warn("Stories list error:", (e as FirebaseError)?.message);
-        setStories([]);
-      }
-
-      try {
-        const cSnap = await getDocs(query(commentsQ, limit(20)));
+        const cSnap = await getDocs(commentsQ);
         const cList: MyComment[] = [];
         cSnap.forEach((d) => {
           const data = d.data() as any;
@@ -383,59 +391,127 @@ export default function ProfilePage() {
         setComments(cList);
       } catch (e) {
         console.warn("Comments list error:", (e as FirebaseError)?.message);
-        const fallback = await fallbackLoadMyComments(user.uid);
+        const fallback = await fallbackLoadMyComments(uid, lim);
         setComments(fallback);
         setCountNote((n) => n ?? "Using a temporary fallback. Create the collection-group index for best results.");
+      } finally {
+        setCommentsLoading(false);
+      }
+    },
+    []
+  );
+
+  // -------- Counts (once) --------
+  useEffect(() => {
+    (async () => {
+      if (!user?.uid) {
+        setStatsLoading(false);
+        return;
       }
 
-      setStatsLoading(false);
+      try {
+        const storiesQ = query(collection(db, "stories"), where("authorId", "==", user.uid));
+        const sCountSnap = await getCountFromServer(storiesQ);
+        setStoryCount(sCountSnap.data().count);
+      } catch (e) {
+        console.warn("Story count error:", (e as FirebaseError)?.message);
+        setStoryCount(null);
+      }
+
+      try {
+        const commentsQ = query(
+          collectionGroup(db, "comments"),
+          where("authorId", "==", user.uid),
+          orderBy("createdAt", "desc")
+        );
+        const cCountSnap = await getCountFromServer(commentsQ);
+        setCommentCount(cCountSnap.data().count);
+      } catch (e) {
+        const err = e as FirebaseError;
+        console.warn("Comment count error:", err?.code, err?.message);
+        setCommentCount(null);
+        setCountNote(
+          "Comment count needs a Firestore collection-group index for `comments` with fields: authorId ASC, createdAt DESC."
+        );
+      } finally {
+        setStatsLoading(false);
+      }
     })();
   }, [user?.uid]);
 
-  if (loading || !user) return <div className="pt-20">Loading…</div>;
+  // -------- Lists (react to limits) --------
+  useEffect(() => {
+    if (!user?.uid) return;
+    loadMyStories(user.uid, storiesLimit);
+  }, [user?.uid, storiesLimit, loadMyStories]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    loadMyComments(user.uid, commentsLimit);
+  }, [user?.uid, commentsLimit, loadMyComments]);
+
+  // Derived flags for “View all”
+  const showStoriesViewAll =
+    !storiesLoading &&
+    storiesLimit === INITIAL_LIMIT &&
+    ((storyCount ?? stories.length) > stories.length);
+
+  const showCommentsViewAll =
+    !commentsLoading &&
+    commentsLimit === INITIAL_LIMIT &&
+    ((commentCount ?? comments.length) > comments.length);
+
+  if (loading || !user) return <div className="pt-20 px-4">Loading…</div>;
 
   return (
     <main className="pt-20 sm:pt-24 pb-20">
       <div className="mx-auto max-w-5xl px-4">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="avatar h-14 w-14 rounded-full overflow-hidden bg-gray-700">
-            {photo ? (
-              <img src={photo} alt="avatar" className="h-full w-full object-cover" />
-            ) : (
-              <img
-                src={`data:image/svg+xml;utf8,\
-              <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\
-              <rect width='100' height='100' fill='%231f2937'/>\
-              <circle cx='50' cy='38' r='18' fill='%234b5563'/>\
-              <rect x='22' y='62' width='56' height='24' rx='12' fill='%234b5563'/>\
-              </svg>`}
-                alt="avatar placeholder"
-                className="h-full w-full object-cover"
-              />
-            )}
-          </div>
+        {/* Header (mobile-first) */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+          <div className="flex items-center gap-4">
+            <div className="avatar h-14 w-14 rounded-full overflow-hidden bg-gray-700 shrink-0">
+              {photo ? (
+                <img src={photo} alt="avatar" className="h-full w-full object-cover" />
+              ) : (
+                <img
+                  src={`data:image/svg+xml;utf8,\
+                <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\
+                <rect width='100' height='100' fill='%231f2937'/>\
+                <circle cx='50' cy='38' r='18' fill='%234b5563'/>\
+                <rect x='22' y='62' width='56' height='24' rx='12' fill='%234b5563'/>\
+                </svg>`}
+                  alt="avatar placeholder"
+                  className="h-full w-full object-cover"
+                />
+              )}
+            </div>
 
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold text-white truncate">{p?.displayName || "My Profile"}</h1>
-            <div className="text-sm text-gray-400 truncate">{p?.email || user.email}</div>
-            <div className="text-xs text-gray-500">
-              {joinedDate ? `Joined ${joinedDate}` : ""}
-              {currentLower ? <> • <span className="text-gray-300">@{currentLower}</span></> : null}
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-semibold text-white truncate">
+                {p?.displayName || "My Profile"}
+              </h1>
+              <div className="text-sm text-gray-400 truncate">{p?.email || user.email}</div>
+              <div className="text-xs text-gray-500">
+                {joinedDate ? `Joined ${joinedDate}` : ""}
+                {currentLower ? <> • <span className="text-gray-300">@{currentLower}</span></> : null}
+              </div>
             </div>
           </div>
 
-          <div className="ml-auto">
-            <Link href="/stories/new" className="px-3 py-2 rounded-md bg-white text-black text-sm font-medium hover:bg-white/90">
+          <div className="sm:ml-auto w-full sm:w-auto">
+            <Link
+              href="/stories/new"
+              className="block text-center rounded-md bg-white text-black text-sm font-medium hover:bg-white/90 px-3 py-2"
+            >
               Write a Story
             </Link>
           </div>
         </div>
 
         {/* Upload + name edit */}
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <section>
-            <h2 className="text-lg font-semibold text-white mb-3">Profile Photo</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-white mb-3">Profile Photo</h2>
             <input
               type="file"
               accept="image/*"
@@ -447,7 +523,7 @@ export default function ProfilePage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-white mb-3">Display Name</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-white mb-3">Display Name</h2>
             <input
               className="w-full p-3 rounded bg-gray-800 text-white placeholder-gray-400"
               placeholder="Display name (3–40 chars, must be unique)"
@@ -455,16 +531,23 @@ export default function ProfilePage() {
               onChange={(e) => setName(e.target.value)}
               maxLength={40}
             />
-            <div className="mt-3 flex items-center gap-2">
-              <button onClick={save} className="bg-blue-600 hover:bg-blue-500 rounded px-4 py-2 font-semibold">
+            <div className="mt-3 flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={save}
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 rounded px-4 py-2 font-semibold"
+              >
                 Save changes
               </button>
-              {msg && <div className="text-green-400 text-sm">{msg}</div>}
+              {msg && (
+                <div className="text-green-400 text-sm" aria-live="polite">
+                  {msg}
+                </div>
+              )}
             </div>
           </section>
         </div>
 
-        {/* Stats: fixed height + skeletons */}
+        {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
           <div className="rounded-xl border border-white/10 bg-white/5 p-4 h-24">
             <div className="text-gray-400 text-xs">Posts</div>
@@ -489,12 +572,14 @@ export default function ProfilePage() {
         </div>
         {countNote && <div className="mb-6 text-xs text-amber-300">{countNote}</div>}
 
-        {/* Lists: min height + skeleton rows */}
-        <div className="grid md:grid-cols-2 gap-6">
+        {/* Lists (1 col on mobile, 2 cols on md+) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* My Stories */}
           <section>
             <h2 className="text-lg font-semibold text-white mb-3">My Stories</h2>
-            {statsLoading ? (
-              <ul className="space-y-3 min-h-[220px]">
+
+            {storiesLoading ? (
+              <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
                 <Skeleton className="h-16" />
                 <Skeleton className="h-16" />
                 <Skeleton className="h-16" />
@@ -505,27 +590,42 @@ export default function ProfilePage() {
                 <Link href="/stories/new" className="text-blue-400 underline">Start here</Link>.
               </p>
             ) : (
-              <ul className="space-y-3 min-h-[220px]">
-                {stories.map((s) => (
-                  <li key={s.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <h3 className="font-medium text-white">
-                      <Link href={toStoryLink(s.id, s.slug)} className="hover:underline">
-                        {s.title}
-                      </Link>
-                    </h3>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {s.status || "published"} · {s.visibility || "public"}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
+                  {stories.map((s) => (
+                    <li key={s.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <h3 className="font-medium text-white">
+                        <Link href={toStoryLink(s.id, s.slug)} className="hover:underline">
+                          {s.title}
+                        </Link>
+                      </h3>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {s.status || "published"} · {s.visibility || "public"}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                {showStoriesViewAll && (
+                  <div className="mt-3">
+                    <button
+                      onClick={() => setStoriesLimit(ALL_LIMIT)}
+                      className="text-sm text-blue-400 hover:underline"
+                    >
+                      View all my stories ({storyCount})
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </section>
 
+          {/* My Recent Comments */}
           <section>
             <h2 className="text-lg font-semibold text-white mb-3">My Recent Comments</h2>
-            {statsLoading ? (
-              <ul className="space-y-3 min-h-[220px]">
+
+            {commentsLoading ? (
+              <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
                 <Skeleton className="h-16" />
                 <Skeleton className="h-16" />
                 <Skeleton className="h-16" />
@@ -533,28 +633,48 @@ export default function ProfilePage() {
             ) : comments.length === 0 ? (
               <p className="text-gray-400">No comments yet.</p>
             ) : (
-              <ul className="space-y-3 min-h-[220px]">
-                {comments.map((c) => (
-                  <li key={c.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <p className="text-gray-100 whitespace-pre-wrap break-words">
-                      {c.body.length > 160 ? c.body.slice(0, 160) + "…" : c.body}
-                    </p>
-                    <div className="text-xs text-gray-400 mt-1">
-                      on{" "}
-                      <Link href={toStoryLink(c.storyId, null)} className="text-blue-400 hover:underline">
-                        this story
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
+                  {comments.map((c) => (
+                    <li key={c.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-gray-100 whitespace-pre-wrap break-words">
+                        {c.body.length > 160 ? c.body.slice(0, 160) + "…" : c.body}
+                      </p>
+                      <div className="text-xs text-gray-400 mt-1">
+                        on{" "}
+                        <Link href={toStoryLink(c.storyId, null)} className="text-blue-400 hover:underline">
+                          this story
+                        </Link>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                {showCommentsViewAll && (
+                  <div className="mt-3">
+                    <button
+                      onClick={() => setCommentsLimit(ALL_LIMIT)}
+                      className="text-sm text-blue-400 hover:underline"
+                    >
+                      View all my comments ({commentCount})
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </section>
         </div>
 
         <div className="h-px bg-gray-800 my-8" />
 
-        <button onClick={signOutApp} className="text-red-400 underline">Sign out</button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={signOutApp}
+            className="w-full sm:w-auto text-center text-red-400 underline px-4 py-2 rounded-md hover:bg-white/5"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </main>
   );
