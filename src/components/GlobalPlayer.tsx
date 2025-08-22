@@ -2,17 +2,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import RadioPlayer from "./RadioPlayer";
 import { usePlayer } from "../context/PlayerContext";
 
 /**
- * Auto-hide behavior:
- * - On /radio → controls visible.
- * - On any other page → controls auto-hidden, but the component stays mounted
- *   and audio keeps playing.
- * - A small 🎵 button lets users show the controls anywhere.
+ * Keep the player ALWAYS mounted so audio never restarts on navigation.
+ * We only toggle visibility with CSS (no conditional render).
  */
 export default function GlobalPlayer() {
   const {
@@ -25,72 +21,59 @@ export default function GlobalPlayer() {
     playOnLoadKey,
   } = usePlayer();
 
-  const router = useRouter();
+  // Avoid SSR mismatch
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-
-  // Auto-hide on route changes:
-  useEffect(() => {
-    const setFromPath = (path: string) => setShowUI(path === "/radio");
-    setFromPath(router.pathname);
-
-    const handleRouteChange = (url: string) => setFromPath(url);
-    router.events.on("routeChangeComplete", handleRouteChange);
-    return () => router.events.off("routeChangeComplete", handleRouteChange);
-  }, [router.pathname, router.events, setShowUI]);
-
   if (!mounted) return null;
 
-  // Keep the whole player mounted; slide off-screen when hidden so audio keeps playing.
+  // Slide off-screen when hidden; keep mounted so the <audio> persists.
   const wrapperClass =
-    "fixed z-50 max-w-xl mx-auto inset-x-4 rounded-xl shadow-xl flex items-center gap-4 bg-gray-900/90 p-4 transition-all duration-200 " +
+    "fixed z-50 right-4 bottom-4 max-w-xl w-[360px] rounded-2xl shadow-xl bg-gray-900/90 backdrop-blur border border-white/10 p-3 transition-all duration-200 " +
     (showUI
-      ? "bottom-4 opacity-100 pointer-events-auto"
-      : "-bottom-96 opacity-0 pointer-events-none");
+      ? "opacity-100 translate-y-0 pointer-events-auto"
+      : "opacity-0 translate-y-6 pointer-events-none");
 
   return (
     <>
-      {/* Always mounted (audio persists even when hidden) */}
+      {/* Controls + audio (ALWAYS mounted) */}
       <div className={wrapperClass}>
-        {/* Prev */}
-        <button
-          onClick={() => setStation(prev, true)}
-          className="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition"
-          aria-label="Previous station"
-          title="Previous station"
-        >
-          <ChevronLeft className="w-5 h-5 text-white" />
-        </button>
-
-        {/* Station info + controls (RadioPlayer contains the <audio/>) */}
-        <div className="flex-1 min-w-0">
-          <div className="text-white text-sm sm:text-base font-semibold mb-1 truncate">
-            {station.name}
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm text-gray-200 truncate">
+            {station?.name || "Live Radio"}
           </div>
-          <RadioPlayer station={station} hideTitle playOnLoadKey={playOnLoadKey} />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setStation(prev, true)}
+              className="rounded-md bg-white/10 hover:bg-white/20 p-1.5 text-gray-100"
+              aria-label="Previous station"
+              title="Previous station"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              onClick={() => setStation(next, true)}
+              className="rounded-md bg-white/10 hover:bg-white/20 p-1.5 text-gray-100"
+              aria-label="Next station"
+              title="Next station"
+            >
+              <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => setShowUI(false)}
+              className="ml-1 rounded-md bg-white/10 hover:bg-white/20 px-2 py-1 text-xs text-gray-100"
+              aria-label="Hide player"
+              title="Hide player"
+            >
+              Hide
+            </button>
+          </div>
         </div>
 
-        {/* Next */}
-        <button
-          onClick={() => setStation(next, true)}
-          className="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition"
-          aria-label="Next station"
-          title="Next station"
-        >
-          <ChevronRight className="w-5 h-5 text-white" />
-        </button>
-
-        {/* Hide UI (audio keeps playing; just hides the controls) */}
-        <button
-          onClick={() => setShowUI(false)}
-          className="ml-2 text-xs text-red-400 hover:underline"
-          title="Hide player"
-        >
-          Hide
-        </button>
+        {/* IMPORTANT: Do not conditionally render RadioPlayer */}
+        <RadioPlayer station={station} hideTitle playOnLoadKey={playOnLoadKey} />
       </div>
 
-      {/* Tiny toggle button when hidden (optional; keeps your UX flexible) */}
+      {/* Small FAB to reveal when hidden (does NOT mount/unmount audio) */}
       {!showUI && (
         <button
           onClick={() => setShowUI(true)}
