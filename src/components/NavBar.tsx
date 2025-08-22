@@ -1,28 +1,33 @@
+// src/components/NavBar.tsx
 "use client";
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { useAuth } from "../context/AuthContext";
 
 const LINKS = [
   { label: "Home", href: "/" },
   { label: "Radio", href: "/radio" },
   { label: "Weather", href: "/weather" },
-  { label: "News", href: "/news" },
   { label: "Events", href: "/events" },
-  // 👇 removed Contact + Privacy (moved to Footer)
+  { label: "News", href: "/news" },
+  { label: "Stories", href: "/stories" },
 ];
 
 export default function NavBar() {
   const [open, setOpen] = useState(false);
   const { user, profile, signOutApp } = useAuth();
+  const router = useRouter();
 
   const handleLinkClick = () => setOpen(false);
   const photo = profile?.photoURL || user?.photoURL || null;
   const displayName = profile?.displayName || user?.displayName || "Profile";
 
+  const isActive = (href: string) => router.pathname === href;
+
   return (
-    <header className="fixed inset-x-0 top-0 z-50 bg-gray-900/90 backdrop-blur-sm">
+    <header className="fixed inset-x-0 top-0 z-50 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800">
       <div className="max-w-6xl mx-auto flex items-center justify-between p-4">
         {/* Logo */}
         <Link
@@ -35,12 +40,17 @@ export default function NavBar() {
         </Link>
 
         {/* Desktop menu */}
-        <nav className="hidden md:flex items-center space-x-2">
+        <nav className="hidden md:flex items-center space-x-1">
           {LINKS.map(({ label, href }) => (
             <Link
               key={href}
               href={href}
-              className="text-gray-200 hover:text-blue-400 px-3 py-1 rounded transition"
+              onClick={handleLinkClick}
+              className={`px-3 py-1 rounded transition ${
+                isActive(href)
+                  ? "text-white bg-gray-800"
+                  : "text-gray-200 hover:text-blue-400"
+              }`}
             >
               {label}
             </Link>
@@ -55,11 +65,13 @@ export default function NavBar() {
                 onClick={handleLinkClick}
               >
                 {photo ? (
-                  <div className="avatar avatar-sm">
-                    <img src={photo} alt="avatar" />
-                  </div>
+                  <img
+                    src={photo}
+                    alt="avatar"
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
                 ) : (
-                  <div className="avatar avatar-sm grid place-items-center text-sm text-gray-300">
+                  <div className="h-8 w-8 rounded-full bg-gray-700 grid place-items-center text-sm text-gray-300">
                     👤
                   </div>
                 )}
@@ -76,7 +88,7 @@ export default function NavBar() {
           ) : (
             <Link
               href="/login"
-              className="ml-2 px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-500"
+              className="ml-2 px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-500"
             >
               Login / Register
             </Link>
@@ -105,11 +117,13 @@ export default function NavBar() {
                 onClick={handleLinkClick}
               >
                 {photo ? (
-                  <div className="avatar avatar-sm">
-                    <img src={photo} alt="avatar" />
-                  </div>
+                  <img
+                    src={photo}
+                    alt="avatar"
+                    className="h-9 w-9 rounded-full object-cover"
+                  />
                 ) : (
-                  <div className="avatar avatar-sm grid place-items-center text-sm text-gray-300">
+                  <div className="h-9 w-9 rounded-full bg-gray-700 grid place-items-center text-gray-300">
                     👤
                   </div>
                 )}
@@ -137,7 +151,11 @@ export default function NavBar() {
             <Link
               key={href}
               href={href}
-              className="block px-4 py-3 text-gray-200 hover:bg-gray-700 transition"
+              className={`block px-4 py-3 transition ${
+                isActive(href)
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-200 hover:bg-gray-700"
+              }`}
               onClick={handleLinkClick}
             >
               {label}

@@ -21,11 +21,14 @@ import {
 } from "firebase/firestore";
 import { auth, db, googleProvider, facebookProvider } from "../firebase/clientApp";
 
-type Profile = {
+/** Add handle support so profile?.handle works everywhere */
+export type Profile = {
   uid: string;
   displayName: string | null;
   photoURL: string | null;
   email: string | null;
+  /** optional public username/handle, if you decide to set it elsewhere */
+  handle?: string | null;
   createdAt?: DocumentData;
   updatedAt?: DocumentData;
 };
@@ -51,22 +54,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Keep a user profile doc in Firestore
+  // Upsert a Firestore profile doc for the current user.
+  // If a profile already has `handle`, we keep it.
   const upsertProfile = async (u: User) => {
     const ref = doc(db, "users", u.uid);
     const snap = await getDoc(ref);
+
+    // Preserve existing handle if present in Firestore
+    const existing = (snap.exists() ? (snap.data() as Partial<Profile>) : {}) || {};
+
     const base: Profile = {
       uid: u.uid,
       displayName: u.displayName ?? null,
       photoURL: u.photoURL ?? null,
       email: u.email ?? null,
+      handle: existing.handle ?? null, // <-- keep saved handle if you add it later
       updatedAt: serverTimestamp(),
     };
+
     if (!snap.exists()) {
       await setDoc(ref, { ...base, createdAt: serverTimestamp() });
     } else {
       await setDoc(ref, base, { merge: true });
     }
+
     const fresh = await getDoc(ref);
     setProfile(fresh.data() as Profile);
   };
@@ -109,17 +120,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { user } = await createUserWithEmailAndPassword(auth, email, password);
       if (displayName) await updateProfile(user, { displayName });
 
-      // Create profile doc while authenticated
       await upsertProfile(user);
 
-      // Send verification email
       const acs: ActionCodeSettings = {
-        url: `${window.location.origin}/login?verified=1`, // redirect after verifying
-        handleCodeInApp: false, // simple web flow (no code handling page needed)
+        url: `${window.location.origin}/login?verified=1`,
+        handleCodeInApp: false,
       };
       await sendEmailVerification(user, acs);
 
-      // Require verification before use
       await signOut(auth);
     } finally {
       setLoading(false);
@@ -132,17 +140,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { user } = await signInWithEmailAndPassword(auth, email, password);
 
       if (!user.emailVerified) {
-        // Try to re-send a verification email
         try {
           await sendEmailVerification(user, {
             url: `${window.location.origin}/login?verified=1`,
             handleCodeInApp: false,
           });
         } catch {
-          // ignore re-send errors
+          /* ignore */
         }
         await signOut(auth);
-        // Surface a clear error to the UI
         throw new Error("Please verify your email. We just re-sent the link.");
       }
 

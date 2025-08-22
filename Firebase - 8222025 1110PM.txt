@@ -1,0 +1,471 @@
+Firebase - 8/18/2025 3:07PM
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- user profiles ---
+    match /users/{uid} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // --- username registry ---
+    // We allow create only when handle is free.
+    // We also allow update if it stays mapped to the same user (lets your tx.set(...) succeed).
+    match /usernames/{handle} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && !exists(/databases/$(database)/documents/usernames/$(handle));
+
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
+
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // --- community chat messages ---
+    // IMPORTANT: do NOT type-check createdAt; serverTimestamp() is a transform.
+    match /messages/{id} {
+      allow read: if true;
+
+      // Guest message (no auth)
+      allow create: if
+        request.resource.data.keys().hasOnly(['name','text','createdAt']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 40 &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 500;
+
+      // Signed-in message
+      allow create: if
+        request.auth != null &&
+        request.resource.data.keys().hasOnly(['uid','name','photoURL','text','createdAt']) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 40 &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 500 &&
+        (!('photoURL' in request.resource.data) ||
+          request.resource.data.photoURL == null ||
+          request.resource.data.photoURL is string);
+
+      // immutable history
+      allow update, delete: if false;
+    }
+
+    // --- page presence ---
+    // Also do NOT type-check lastActive/since (serverTimestamp transforms).
+    match /page_presence/{id} {
+      allow read: if false;
+
+      allow create, update: if
+        request.resource.data.keys().hasOnly(['id','uid','path','lastActive','since']) &&
+        request.resource.data.id == id &&
+        request.resource.data.path is string &&
+        (
+          // authed: id must be their uid and uid field must match
+          (request.auth != null && id == request.auth.uid && request.resource.data.uid == request.auth.uid)
+          ||
+          // guest: id starts with anon- and uid must be null
+          (request.auth == null && id.matches('^anon-.*$') && request.resource.data.uid == null)
+        );
+
+      allow delete: if false;
+    }
+  }
+}
+
+
+
+
+
+new
+// firestore.rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- user profiles (unchanged) ---
+    match /users/{uid} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // --- username registry (unchanged) ---
+    match /usernames/{handle} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && !exists(/databases/$(database)/documents/usernames/$(handle));
+
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
+
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // --- community chat messages (unchanged) ---
+    // IMPORTANT: do NOT type-check createdAt; serverTimestamp() is a transform.
+    match /messages/{id} {
+      allow read: if true;
+
+      // Guest message (no auth)
+      allow create: if
+        request.resource.data.keys().hasOnly(['name','text','createdAt']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 40 &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 500;
+
+      // Signed-in message
+      allow create: if
+        request.auth != null &&
+        request.resource.data.keys().hasOnly(['uid','name','photoURL','text','createdAt']) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 40 &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 500 &&
+        (!('photoURL' in request.resource.data) ||
+          request.resource.data.photoURL == null ||
+          request.resource.data.photoURL is string);
+
+      // immutable history
+      allow update, delete: if false;
+    }
+
+    // --- page presence (unchanged) ---
+    // Do NOT type-check lastActive/since; serverTimestamp transforms.
+    match /page_presence/{id} {
+      allow read: if false;
+
+      allow create, update: if
+        request.resource.data.keys().hasOnly(['id','uid','path','lastActive','since']) &&
+        request.resource.data.id == id &&
+        request.resource.data.path is string &&
+        (
+          // authed: id must be their uid and uid field must match
+          (request.auth != null && id == request.auth.uid && request.resource.data.uid == request.auth.uid)
+          ||
+          // guest: id starts with anon- and uid must be null
+          (request.auth == null && id.matches('^anon-.*$') && request.resource.data.uid == null)
+        );
+
+      allow delete: if false;
+    }
+
+    // =========================
+    // === STORIES MODULE 📝 ===
+    // =========================
+
+    // Top-level stories
+    match /stories/{storyId} {
+      allow read: if true;
+
+      // Create a new story
+      // Note: don't type-check createdAt/updatedAt (serverTimestamp)
+      allow create: if request.auth != null
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'authorId','authorName','authorHandle',
+          'title','slug','tags','coverUrl',
+          'content','counts','status',
+          'visibility','createdAt','updatedAt'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && (request.resource.data.slug == null || request.resource.data.slug is string)
+        && request.resource.data.content is map
+        && request.resource.data.content.type == 'single'
+        && request.resource.data.content.body is string
+        && request.resource.data.content.body.size() > 0
+        && request.resource.data.content.body.size() <= 50000
+        && (request.resource.data.tags == null || (request.resource.data.tags is list && request.resource.data.tags.size() <= 10))
+        && (request.resource.data.coverUrl == null || request.resource.data.coverUrl is string)
+        && request.resource.data.counts is map
+        && request.resource.data.counts.reactions is int
+        && request.resource.data.counts.comments is int
+        && request.resource.data.counts.reads is int
+        && request.resource.data.status in ['draft','published']
+        && request.resource.data.visibility in ['public','unlisted','private'];
+
+      // Update only by the author; limit which fields can change
+      allow update: if request.auth != null
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'title','slug','tags','coverUrl',
+          'content','status','visibility',
+          'updatedAt'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.content is map
+        && request.resource.data.content.type == 'single'
+        && request.resource.data.content.body is string
+        && request.resource.data.content.body.size() > 0
+        && request.resource.data.content.body.size() <= 50000
+        && (request.resource.data.tags == null || (request.resource.data.tags is list && request.resource.data.tags.size() <= 10))
+        && (request.resource.data.coverUrl == null || request.resource.data.coverUrl is string)
+        && request.resource.data.status in ['draft','published']
+        && request.resource.data.visibility in ['public','unlisted','private'];
+
+      // Delete only by the author
+      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+
+      // --- Comments subcollection ---
+      match /comments/{commentId} {
+        allow read: if true;
+
+        // Create comment by a signed-in user
+        // NOTE: don't type-check createdAt (serverTimestamp)
+        allow create: if request.auth != null
+          && request.resource.data.keys().hasOnly(['authorId','body','createdAt'])
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 2000;
+
+        // Allow author of the comment to edit (text only) — optional
+        allow update: if request.auth != null
+          && resource.data.authorId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['body']) // keep edits minimal
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 2000;
+
+        // Allow author of the comment to delete
+        allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+      }
+
+      // --- Reactions subcollection ---
+      // One doc per user: /stories/{id}/reactions/{uid}
+      match /reactions/{uid} {
+        allow read: if true;
+
+        // Create: user can set their reaction for this story
+        // You can enforce one of a small set of emoji/labels.
+        allow create: if request.auth != null
+          && uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['type','createdAt'])
+          && request.resource.data.type in ['heart','like','fire','sad','wow'];
+
+        // Update: same user can switch reaction type
+        allow update: if request.auth != null
+          && uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['type'])
+          && request.resource.data.type in ['heart','like','fire','sad','wow'];
+
+        // Delete: same user can remove their reaction
+        allow delete: if request.auth != null && uid == request.auth.uid;
+      }
+    }
+  }
+}
+
+
+
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- user profiles (unchanged) ---
+    match /users/{uid} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // --- username registry (unchanged) ---
+    match /usernames/{handle} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && !exists(/databases/$(database)/documents/usernames/$(handle));
+
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
+
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // --- community chat messages (unchanged) ---
+    match /messages/{id} {
+      allow read: if true;
+
+      // Guest message
+      allow create: if
+        request.resource.data.keys().hasOnly(['name','text','createdAt']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 40 &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 500;
+
+      // Signed-in message
+      allow create: if
+        request.auth != null &&
+        request.resource.data.keys().hasOnly(['uid','name','photoURL','text','createdAt']) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 40 &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 500 &&
+        (!('photoURL' in request.resource.data) ||
+          request.resource.data.photoURL == null ||
+          request.resource.data.photoURL is string);
+
+      allow update, delete: if false; // immutable
+    }
+
+    // --- page presence (unchanged) ---
+    match /page_presence/{id} {
+      allow read: if false;
+
+      allow create, update: if
+        request.resource.data.keys().hasOnly(['id','uid','path','lastActive','since']) &&
+        request.resource.data.id == id &&
+        request.resource.data.path is string &&
+        (
+          (request.auth != null && id == request.auth.uid && request.resource.data.uid == request.auth.uid)
+          ||
+          (request.auth == null && id.matches('^anon-.*$') && request.resource.data.uid == null)
+        );
+
+      allow delete: if false;
+    }
+
+    // =========================
+    // === STORIES MODULE 📝 ===
+    // =========================
+    match /stories/{storyId} {
+      allow read: if true;
+
+      // CREATE
+      allow create: if request.auth != null
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'authorId','authorName','authorHandle',
+          'title','slug','tags','coverUrl',
+          'content','counts','status',
+          'visibility','createdAt','updatedAt'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && (request.resource.data.slug == null || request.resource.data.slug is string)
+        && request.resource.data.content is map
+        && request.resource.data.content.type == 'single'
+        && request.resource.data.content.body is string
+        && request.resource.data.content.body.size() > 0
+        && request.resource.data.content.body.size() <= 50000
+        && (request.resource.data.tags == null || (request.resource.data.tags is list && request.resource.data.tags.size() <= 10))
+        && (request.resource.data.coverUrl == null || request.resource.data.coverUrl is string)
+        && request.resource.data.counts is map
+        && request.resource.data.counts.reactions is int
+        && request.resource.data.counts.comments is int
+        && request.resource.data.counts.reads is int
+        && request.resource.data.status in ['draft','published']
+        && request.resource.data.visibility in ['public','unlisted','private'];
+
+      // UPDATE (only selected fields)
+      allow update: if request.auth != null
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.diff(resource.data).changedKeys()
+             .hasOnly(['title','slug','tags','coverUrl','content','status','visibility','updatedAt'])
+        && (
+          !('title' in request.resource.data.diff(resource.data).changedKeys())
+          || (request.resource.data.title is string
+              && request.resource.data.title.size() > 0
+              && request.resource.data.title.size() <= 120)
+        )
+        && (
+          !('content' in request.resource.data.diff(resource.data).changedKeys())
+          || (request.resource.data.content is map
+              && request.resource.data.content.type == 'single'
+              && request.resource.data.content.body is string
+              && request.resource.data.content.body.size() > 0
+              && request.resource.data.content.body.size() <= 50000)
+        )
+        && (
+          !('tags' in request.resource.data.diff(resource.data).changedKeys())
+          || (request.resource.data.tags is list && request.resource.data.tags.size() <= 10)
+        )
+        && (
+          !('coverUrl' in request.resource.data.diff(resource.data).changedKeys())
+          || (request.resource.data.coverUrl == null || request.resource.data.coverUrl is string)
+        )
+        && (
+          !('status' in request.resource.data.diff(resource.data).changedKeys())
+          || (request.resource.data.status in ['draft','published'])
+        )
+        && (
+          !('visibility' in request.resource.data.diff(resource.data).changedKeys())
+          || (request.resource.data.visibility in ['public','unlisted','private'])
+        );
+
+      // DELETE
+      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+
+      // COMMENTS
+      match /comments/{commentId} {
+        allow read: if true;
+
+        allow create: if request.auth != null
+          && request.resource.data.keys().hasOnly(['authorId','body','createdAt'])
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 2000;
+
+        allow update: if request.auth != null
+          && resource.data.authorId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['body'])
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 2000;
+
+        allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+      }
+
+      // REACTIONS
+      match /reactions/{uid} {
+        allow read: if true;
+
+        // create with type + createdAt
+        allow create: if request.auth != null
+          && uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['type','createdAt'])
+          && request.resource.data.type in ['heart','like','fire','sad','wow'];
+
+        // update ONLY the type; createdAt must not change
+        allow update: if request.auth != null
+          && uid == request.auth.uid
+          && request.resource.data.type in ['heart','like','fire','sad','wow']
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['type']);
+
+        allow delete: if request.auth != null && uid == request.auth.uid;
+      }
+    }
+  }
+}
