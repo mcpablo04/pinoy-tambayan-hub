@@ -1,4 +1,3 @@
-// src/components/ReactionBar.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -36,9 +35,7 @@ export default function ReactionBar({
   const [counts, setCounts] = useState<Record<ReactionType, number>>({
     heart: 0, like: 0, fire: 0, sad: 0, wow: 0,
   });
-  const [pending, setPending] = useState(false);
 
-  // Live aggregate counts + my current reaction
   useEffect(() => {
     const ref = collection(db, "stories", storyId, "reactions");
     return onSnapshot(ref, (snap) => {
@@ -46,9 +43,7 @@ export default function ReactionBar({
       let my: ReactionType | null = null;
       snap.forEach((d) => {
         const t = (d.data()?.type ?? "") as ReactionType;
-        if (t === "heart" || t === "like" || t === "fire" || t === "sad" || t === "wow") {
-          c[t] = (c[t] || 0) + 1;
-        }
+        if (REACTIONS.find(r => r.key === t)) c[t] = (c[t] || 0) + 1;
         if (user?.uid && d.id === user.uid) my = t || null;
       });
       setCounts(c);
@@ -63,38 +58,25 @@ export default function ReactionBar({
 
   const toggle = async (t: ReactionType) => {
     if (!user?.uid) return alert("Please log in to react.");
-    if (pending) return;
 
     const myRef = doc(db, "stories", storyId, "reactions", user.uid);
-    const prev = mine;
 
-    // optimistic UI
-    setPending(true);
-    setMine(prev === t ? null : t);
+    if (mine === t) {
+      await deleteDoc(myRef);
+      return;
+    }
 
     try {
-      if (prev === t) {
-        await deleteDoc(myRef); // remove reaction
-      } else {
-        // Update only 'type' (allowed by rules). If doc doesn't exist, create it below.
-        await updateDoc(myRef, { type: t });
-      }
+      await updateDoc(myRef, { type: t });
     } catch {
-      try {
-        await setDoc(myRef, { type: t, createdAt: serverTimestamp() });
-      } catch (e: any) {
-        // revert on real failure
-        setMine(prev);
-        alert(e?.message || "Failed to react.");
-      }
-    } finally {
-      setPending(false);
+      await setDoc(myRef, { type: t, createdAt: serverTimestamp() });
     }
   };
 
+  // 👇 fixed/min width so the button won’t shrink as counts change
   const btnBase =
     "border transition rounded-full flex items-center justify-center " +
-    (compact ? "h-8 px-2 text-xs" : "px-3 py-1.5 text-sm");
+    (compact ? "h-8 px-2 text-xs min-w-[44px]" : "px-3 py-1.5 text-sm min-w-[56px]");
 
   return (
     <div className={`flex items-center gap-2 ${compact ? "" : "mt-6"}`}>
@@ -104,12 +86,11 @@ export default function ReactionBar({
           <button
             key={r.key}
             onClick={() => toggle(r.key)}
-            disabled={pending}
             className={`${btnBase} ${
               active
                 ? "bg-blue-600 text-white border-blue-500"
                 : "bg-white/5 text-gray-200 border-white/10 hover:bg-white/10"
-            } ${pending ? "opacity-70 cursor-not-allowed" : ""}`}
+            }`}
             title={r.label}
           >
             <span className={compact ? "mr-1" : "mr-1 text-base"}>{r.icon}</span>
