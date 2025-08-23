@@ -1,4 +1,3 @@
-// src/pages/stories/index.tsx
 "use client";
 
 import Link from "next/link";
@@ -75,14 +74,11 @@ export default function StoriesFeed() {
   const [lastCursors, setLastCursors] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
 
   const baseQuery = useCallback(() => {
-    // We keep filtering client-side to avoid extra composite indexes:
-    // orderBy(createdAt desc) + limit
     return query(collection(db, "stories"), orderBy("createdAt", "desc"));
   }, []);
 
   const toStory = (d: QueryDocumentSnapshot<DocumentData>): Story | null => {
     const s = d.data() as any;
-    // client-side filter to keep public, published
     if (s.status !== "published" || s.visibility === "private") return null;
     return {
       id: d.id,
@@ -103,11 +99,10 @@ export default function StoriesFeed() {
     let snap;
 
     if (direction === "init") {
-      // fetch PAGE_SIZE+1 to decide if there's a next page
       q = query(q, limit(PAGE_SIZE + 1));
       snap = await getDocs(q);
     } else if (direction === "next") {
-      const last = lastCursors[page]; // last of current page
+      const last = lastCursors[page];
       if (!last) {
         setLoading(false);
         return;
@@ -115,7 +110,6 @@ export default function StoriesFeed() {
       q = query(q, startAfter(last), limit(PAGE_SIZE + 1));
       snap = await getDocs(q);
     } else {
-      // prev: use endBefore(first of current page) + limitToLast
       const first = firstCursors[page];
       if (!first) {
         setLoading(false);
@@ -125,20 +119,15 @@ export default function StoriesFeed() {
       snap = await getDocs(q);
     }
 
-    // turn into stories (filtering out drafts/private)
     const docs = snap.docs;
     const mapped = docs.map(toStory).filter(Boolean) as Story[];
 
-    // Use +1 overfetch to detect if more pages exist in that direction
     const hasMore = mapped.length > PAGE_SIZE;
     const pageItems =
-      direction === "prev"
-        ? mapped.slice(-PAGE_SIZE) // for prev, we got last N of the window
-        : mapped.slice(0, PAGE_SIZE);
+      direction === "prev" ? mapped.slice(-PAGE_SIZE) : mapped.slice(0, PAGE_SIZE);
 
     setStories(pageItems);
 
-    // update cursors for this page
     const firstDoc = direction === "prev"
       ? docs.slice(-PAGE_SIZE)[0] ?? docs[0]
       : docs[0];
@@ -153,7 +142,6 @@ export default function StoriesFeed() {
         setPage(0);
         setHasNextPage(hasMore);
       } else if (direction === "next") {
-        // moving forward creates a new page entry
         setFirstCursors((prev) => {
           const arr = prev.slice(0, page + 1);
           arr.push(firstDoc);
@@ -167,10 +155,8 @@ export default function StoriesFeed() {
         setPage((p) => p + 1);
         setHasNextPage(hasMore);
       } else {
-        // prev replaces current view with prior page;
-        // we already have cursors for older pages, but we refresh in case of filter differences
         setFirstCursors((prev) => {
-          const arr = prev.slice(0, page); // we're moving to page-1
+          const arr = prev.slice(0, page);
           arr[arr.length - 1] = firstDoc;
           return arr;
         });
@@ -180,13 +166,9 @@ export default function StoriesFeed() {
           return arr;
         });
         setPage((p) => Math.max(0, p - 1));
-
-        // can we go forward after going back?
-        // If we have a cached page ahead, yes; otherwise rely on hasMore we already knew then.
         setHasNextPage(true);
       }
     } else {
-      // no docs returned
       if (direction === "init") {
         setFirstCursors([]);
         setLastCursors([]);
@@ -250,13 +232,14 @@ export default function StoriesFeed() {
                 className="cursor-pointer rounded-xl border border-white/10 bg-white/5 p-4 hover:bg-white/10 transition"
               >
                 <h2 className="text-lg font-medium text-white">
-                  <a
+                  {/* IMPORTANT: use Link, not <a href> */}
+                  <Link
                     href={`/stories/${slugOrId(s)}`}
                     onClick={(e) => e.stopPropagation()}
                     className="hover:underline"
                   >
                     {s.title}
-                  </a>
+                  </Link>
                 </h2>
 
                 <p className="text-sm text-gray-300 mt-1">
@@ -320,9 +303,7 @@ export default function StoriesFeed() {
             ← Previous
           </button>
 
-          <div className="text-xs text-gray-400">
-            Page {page + 1}
-          </div>
+          <div className="text-xs text-gray-400">Page {page + 1}</div>
 
           <button
             disabled={!canNext || loading}

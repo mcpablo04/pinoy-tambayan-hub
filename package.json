@@ -5,12 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "next-sitemap",       
+    "postbuild": "next-sitemap",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
     "@vercel/blob": "^1.1.1",
+    "fast-xml-parser": "^5.2.5",
     "firebase": "^12.0.0",
     "hls.js": "^1.6.7",
     "lucide-react": "^0.536.0",
