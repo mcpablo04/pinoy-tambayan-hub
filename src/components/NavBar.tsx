@@ -74,13 +74,11 @@ export default function NavBar() {
                 onClick={handleLinkClick}
               >
                 {photo ? (
-                  <img
-                    src={photo}
-                    alt="avatar"
-                    className="h-8 w-8 rounded-full object-cover"
-                  />
+                  <div className="avatar avatar-sm">
+                    <img src={photo} alt="avatar" />
+                  </div>
                 ) : (
-                  <div className="h-8 w-8 rounded-full bg-gray-700 grid place-items-center text-sm text-gray-300">
+                  <div className="avatar avatar-sm grid place-items-center text-sm text-gray-300">
                     👤
                   </div>
                 )}
@@ -126,13 +124,11 @@ export default function NavBar() {
                 onClick={handleLinkClick}
               >
                 {photo ? (
-                  <img
-                    src={photo}
-                    alt="avatar"
-                    className="h-9 w-9 rounded-full object-cover"
-                  />
+                  <div className="avatar avatar-md">
+                    <img src={photo} alt="avatar" />
+                  </div>
                 ) : (
-                  <div className="h-9 w-9 rounded-full bg-gray-700 grid place-items-center text-gray-300">
+                  <div className="avatar avatar-md grid place-items-center text-gray-300">
                     👤
                   </div>
                 )}
