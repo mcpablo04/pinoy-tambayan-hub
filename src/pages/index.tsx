@@ -68,14 +68,14 @@ export default function Home() {
 
             {/* Quick links / cards */}
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              {/* CHANGED: vibe = pocketbook-style drama/romance */}
+              {/* UPDATED: Stories card */}
               <Link href="/stories" className="card hover:bg-card transition">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-gradient-to-tr from-blue-500 to-cyan-400">
                     <span className="text-white text-xl">📖</span>
                   </div>
                   <div>
-                    <h3 className="font-semibold">Pocketbook Stories</h3>
+                    <h3 className="font-semibold">Stories</h3>
                     <p className="text-sm text-gray-400">Drama • Romance • One-shots</p>
                   </div>
                 </div>

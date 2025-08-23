@@ -1,14 +1,17 @@
 // src/components/GlobalPlayer.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import RadioPlayer from "./RadioPlayer";
 import { usePlayer } from "../context/PlayerContext";
 
 /**
- * Keep the player ALWAYS mounted so audio never restarts on navigation.
- * We only toggle visibility with CSS (no conditional render).
+ * Floating compact player (lower-right).
+ * - Always mounted so audio persists
+ * - Auto-show on /radio, hide elsewhere (🎵 FAB can reopen)
+ * - Passes playOnLoadKey so clicks trigger immediate play
  */
 export default function GlobalPlayer() {
   const {
@@ -18,49 +21,56 @@ export default function GlobalPlayer() {
     setStation,
     showUI,
     setShowUI,
-    playOnLoadKey,
+    playOnLoadKey, // ← important for auto-play on click
   } = usePlayer();
 
-  // Avoid SSR mismatch
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
+  const router = useRouter();
 
-  // Slide off-screen when hidden; keep mounted so the <audio> persists.
+  // Auto-show only on /radio
+  useEffect(() => {
+    setShowUI(router.pathname === "/radio");
+  }, [router.pathname, setShowUI]);
+
+  useEffect(() => {
+    const handleRouteChange = (url: string) => setShowUI(url === "/radio");
+    router.events.on("routeChangeComplete", handleRouteChange);
+    return () => router.events.off("routeChangeComplete", handleRouteChange);
+  }, [router.events, setShowUI]);
+
   const wrapperClass =
-    "fixed z-50 right-4 bottom-4 max-w-xl w-[360px] rounded-2xl shadow-xl bg-gray-900/90 backdrop-blur border border-white/10 p-3 transition-all duration-200 " +
+    "fixed bottom-4 right-4 z-50 max-w-sm w-[340px] rounded-2xl shadow-xl bg-gray-900/90 backdrop-blur border border-white/10 p-3 transition-all duration-200 " +
     (showUI
       ? "opacity-100 translate-y-0 pointer-events-auto"
       : "opacity-0 translate-y-6 pointer-events-none");
 
   return (
     <>
-      {/* Controls + audio (ALWAYS mounted) */}
+      {/* Player panel (kept mounted) */}
       <div className={wrapperClass}>
         <div className="flex items-center justify-between mb-2">
-          <div className="text-sm text-gray-200 truncate">
-            {station?.name || "Live Radio"}
-          </div>
+          <h2 className="text-sm font-semibold text-gray-200 truncate">
+            {station.name}
+          </h2>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setStation(prev, true)}
-              className="rounded-md bg-white/10 hover:bg-white/20 p-1.5 text-gray-100"
-              aria-label="Previous station"
-              title="Previous station"
+              className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-gray-100"
+              aria-label="Previous"
+              title="Previous"
             >
               <ChevronLeft size={16} />
             </button>
             <button
               onClick={() => setStation(next, true)}
-              className="rounded-md bg-white/10 hover:bg-white/20 p-1.5 text-gray-100"
-              aria-label="Next station"
-              title="Next station"
+              className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-gray-100"
+              aria-label="Next"
+              title="Next"
             >
               <ChevronRight size={16} />
             </button>
             <button
               onClick={() => setShowUI(false)}
-              className="ml-1 rounded-md bg-white/10 hover:bg-white/20 px-2 py-1 text-xs text-gray-100"
+              className="ml-1 text-xs text-red-300 hover:text-red-200"
               aria-label="Hide player"
               title="Hide player"
             >
@@ -69,11 +79,11 @@ export default function GlobalPlayer() {
           </div>
         </div>
 
-        {/* IMPORTANT: Do not conditionally render RadioPlayer */}
+        {/* Pass playOnLoadKey so RadioPlayer starts when user clicked Play on a card */}
         <RadioPlayer station={station} hideTitle playOnLoadKey={playOnLoadKey} />
       </div>
 
-      {/* Small FAB to reveal when hidden (does NOT mount/unmount audio) */}
+      {/* Floating button when hidden */}
       {!showUI && (
         <button
           onClick={() => setShowUI(true)}

@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/router";
 import { useAuth } from "../context/AuthContext";
 
@@ -32,11 +33,19 @@ export default function NavBar() {
         {/* Logo */}
         <Link
           href="/"
-          className="flex items-center text-white text-2xl font-bold"
+          className="flex items-center gap-3 text-white font-bold"
           onClick={handleLinkClick}
+          aria-label="Pinoy Tambayan Hub"
         >
-          <span className="mr-2">🎵</span>
-          Pinoy Tambayan Hub
+          <Image
+            src="/brand/pt-hub-logo.png"
+            alt="Pinoy Tambayan Hub"
+            width={36}
+            height={36}
+            priority
+            className="h-9 w-9 rounded-md object-contain"
+          />
+          <span className="text-xl md:text-2xl">Pinoy Tambayan Hub</span>
         </Link>
 
         {/* Desktop menu */}

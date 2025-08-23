@@ -6,7 +6,7 @@ import type { Station } from "./RadioPlayer";
 type Props = {
   stations: Station[];
   currentStationId?: string;
-  onSelect: (s: Station, playNow?: boolean) => void; // ← playNow supported
+  onSelect: (s: Station, playNow?: boolean) => void; // ← allow 1‑click play
 };
 
 export default function StationList({
@@ -24,7 +24,7 @@ export default function StationList({
             key={s.id}
             className="group relative overflow-hidden rounded-xl border border-white/5 bg-gray-800/60 hover:bg-gray-800 transition"
           >
-            {/* Card links to station detail page */}
+            {/* Whole card links to station details */}
             <Link
               href={`/stations/${s.id}`}
               className="block focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-xl"
@@ -47,7 +47,7 @@ export default function StationList({
               </div>
             </Link>
 
-            {/* Quick Play button (top-right). One-click start */}
+            {/* Quick Play (DOES NOT NAVIGATE) */}
             <div className="absolute top-2 right-2">
               <button
                 onClick={(e) => {
