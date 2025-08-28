@@ -1,11 +1,10 @@
-// src/components/Comments.tsx
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -15,25 +14,27 @@ import {
   query,
   serverTimestamp,
   startAfter,
+  setDoc,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { db } from "../firebase/clientApp";
 import { useAuth } from "../context/AuthContext";
 
+/* ----------------- types ----------------- */
 type FireTs = { toDate?: () => Date; seconds?: number } | null | undefined;
-
-type Comment = {
-  id: string;
-  authorId: string;
-  body: string;
-  createdAt?: FireTs;
-};
+type Comment = { id: string; authorId: string; body: string; createdAt?: FireTs };
+type Notify = (kind: "success" | "error" | "info", text: string) => void;
 
 type Props = {
   storyId: string;
-  onPosted?: () => void;        // optional callback
-  initialBatch?: number;        // default 5
+  onPosted?: () => void;
+  onDeleted?: () => void;
+  initialBatch?: number;
+  /** show delete buttons (default true) */
+  enableDelete?: boolean;
+  /** optional toast hook (slug page passes this) */
+  notify?: Notify;
 };
 
 function fmtDate(ts?: FireTs) {
@@ -41,11 +42,11 @@ function fmtDate(ts?: FireTs) {
     if (!ts) return "";
     if (typeof ts?.toDate === "function") {
       const d = ts.toDate!();
-      return d.toLocaleString("en-PH", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+      return d.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
     }
     if (typeof ts?.seconds === "number") {
       const d = new Date(ts.seconds * 1000);
-      return d.toLocaleString("en-PH", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+      return d.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
     }
     return "";
   } catch {
@@ -53,21 +54,116 @@ function fmtDate(ts?: FireTs) {
   }
 }
 
-export default function Comments({ storyId, onPosted, initialBatch = 5 }: Props) {
+/* ----------------- pretty confirm ----------------- */
+type ConfirmState = {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmText?: string;
+  danger?: boolean;
+  resolve?: (ok: boolean) => void;
+};
+
+function ConfirmDialog({ state, setState }: { state: ConfirmState; setState: (s: ConfirmState) => void }) {
+  const close = (ok: boolean) => {
+    state.resolve?.(ok);
+    setState({ ...state, open: false, resolve: undefined });
+  };
+
+  // Close on Esc
+  useEffect(() => {
+    if (!state.open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div
+      className={`fixed inset-0 z-[90] ${state.open ? "" : "pointer-events-none"}`}
+      aria-hidden={!state.open}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${state.open ? "opacity-100" : "opacity-0"}`}
+        onClick={() => close(false)}
+      />
+      <div
+        className={`absolute inset-0 flex items-end sm:items-center justify-center p-4 transition-all duration-200
+        ${state.open ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+      >
+        <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0b0f19] p-5 shadow-2xl">
+          <h3 className="text-lg font-semibold text-white">{state.title}</h3>
+          <p className="mt-2 text-sm text-gray-300">{state.message}</p>
+          <div className="mt-4 flex flex-col sm:flex-row sm:justify-end gap-2">
+            <button
+              onClick={() => close(false)}
+              className="px-4 py-2 rounded-md border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => close(true)}
+              className={`px-4 py-2 rounded-md text-white ${
+                state.danger ? "bg-red-600 hover:bg-red-500" : "bg-blue-600 hover:bg-blue-500"
+              }`}
+            >
+              {state.confirmText ?? "Confirm"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const askConfirm = (
+  setState: (s: ConfirmState) => void,
+  opts: Omit<ConfirmState, "open" | "resolve">
+) => new Promise<boolean>((resolve) => setState({ ...opts, open: true, resolve }));
+
+/* ----------------- component ----------------- */
+export default function Comments({
+  storyId,
+  onPosted,
+  onDeleted,
+  initialBatch = 5,
+  enableDelete = true,
+  notify,
+}: Props) {
   const { user } = useAuth();
 
   const [text, setText] = useState("");
   const [items, setItems] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // cursor for loading older pages
   const [moreCursor, setMoreCursor] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // cache author display names (uid -> name)
   const [authors, setAuthors] = useState<Record<string, string>>({});
+  const [storyOwner, setStoryOwner] = useState<string | null>(null);
 
-  // ---- Live first page ----
+  // Confirm modal state
+  const [confirm, setConfirm] = useState<ConfirmState>({
+    open: false,
+    title: "",
+    message: "",
+  });
+
+  // who owns the story (so owner can delete any comment)
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await getDoc(doc(db, "stories", storyId));
+        setStoryOwner((s.data()?.authorId as string) ?? null);
+      } catch {
+        setStoryOwner(null);
+      }
+    })();
+  }, [storyId]);
+
+  // live first page
   useEffect(() => {
     setLoading(true);
     const base = query(
@@ -75,7 +171,6 @@ export default function Comments({ storyId, onPosted, initialBatch = 5 }: Props)
       orderBy("createdAt", "desc"),
       limit(initialBatch)
     );
-
     const unsub = onSnapshot(
       base,
       (snap) => {
@@ -89,11 +184,10 @@ export default function Comments({ storyId, onPosted, initialBatch = 5 }: Props)
           };
         });
 
-        // Merge with any older items already loaded; dedupe by id
+        // dedup by id (server data wins)
         setItems((prev) => {
-          const firstIds = new Set(firstBatch.map((c) => c.id));
-          // also drop any optimistic "temp-*" items once the server data arrives
-          const older = prev.filter((c) => !firstIds.has(c.id) && !c.id.startsWith("temp-"));
+          const serverIds = new Set(firstBatch.map((c) => c.id));
+          const older = prev.filter((c) => !serverIds.has(c.id));
           return [...firstBatch, ...older];
         });
 
@@ -109,7 +203,7 @@ export default function Comments({ storyId, onPosted, initialBatch = 5 }: Props)
     return () => unsub();
   }, [storyId, initialBatch]);
 
-  // ---- Resolve author names (public /users/{uid}) ----
+  // resolve author names
   useEffect(() => {
     (async () => {
       const need = Array.from(new Set(items.map((i) => i.authorId))).filter((uid) => uid && !authors[uid]);
@@ -128,7 +222,7 @@ export default function Comments({ storyId, onPosted, initialBatch = 5 }: Props)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-  // ---- Load older pages ----
+  // older pages
   const loadMore = useCallback(async () => {
     if (!moreCursor || loadingMore) return;
     setLoadingMore(true);
@@ -163,32 +257,52 @@ export default function Comments({ storyId, onPosted, initialBatch = 5 }: Props)
     }
   }, [storyId, moreCursor, loadingMore, initialBatch]);
 
-  // ---- Post a comment (must match Firestore rules exactly) ----
+  // post (pre-generate id to avoid duplicates)
   const onPost = async (e: FormEvent) => {
     e.preventDefault();
     const body = text.trim();
-    if (!user?.uid) return alert("Please log in to comment.");
+    if (!user?.uid) { notify?.("error", "Please log in to comment."); return; }
     if (!body) return;
 
     setText("");
 
-    // Optimistic UI (will be replaced by live snapshot)
-    const tempId = `temp-${Date.now()}`;
-    setItems((prev) => [
-      { id: tempId, authorId: user.uid, body, createdAt: null },
-      ...prev,
-    ]);
+    const ref = doc(collection(db, "stories", storyId, "comments"));
+    setItems((prev) => [{ id: ref.id, authorId: user.uid, body, createdAt: null }, ...prev]);
 
     try {
-      await addDoc(collection(db, "stories", storyId, "comments"), {
-        authorId: user.uid,        // ✅ allowed by rules
-        body,                      // ✅ allowed by rules
-        createdAt: serverTimestamp(), // ✅ allowed by rules
-      });
+      await setDoc(ref, { authorId: user.uid, body, createdAt: serverTimestamp() });
       onPosted?.();
+      notify?.("success", "Comment posted");
     } catch {
-      setItems((prev) => prev.filter((c) => c.id !== tempId)); // rollback
-      alert("Failed to post comment. Please try again.");
+      setItems((prev) => prev.filter((c) => c.id !== ref.id));
+      notify?.("error", "Failed to post comment.");
+    }
+  };
+
+  // delete (author OR story owner) with pretty confirm
+  const remove = async (cid: string) => {
+    if (!user?.uid) return;
+    const c = items.find((i) => i.id === cid);
+    if (!c) return;
+
+    const canDelete = enableDelete && (user.uid === c.authorId || (storyOwner && user.uid === storyOwner));
+    if (!canDelete) return;
+
+    const ok = await askConfirm(setConfirm, {
+      title: "Delete this comment?",
+      message: "This action cannot be undone.",
+      confirmText: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      await deleteDoc(doc(db, "stories", storyId, "comments", cid));
+      setItems((prev) => prev.filter((i) => i.id !== cid));
+      onDeleted?.();
+      notify?.("success", "Comment deleted");
+    } catch {
+      notify?.("error", "Failed to delete comment.");
     }
   };
 
@@ -196,6 +310,9 @@ export default function Comments({ storyId, onPosted, initialBatch = 5 }: Props)
 
   return (
     <section className="mt-10">
+      {/* Confirm modal */}
+      <ConfirmDialog state={confirm} setState={setConfirm} />
+
       <h3 className="text-lg font-semibold text-white mb-3">Comments</h3>
 
       {/* Write form */}
@@ -230,17 +347,33 @@ export default function Comments({ storyId, onPosted, initialBatch = 5 }: Props)
         <p className="text-gray-400">Be the first to comment.</p>
       ) : (
         <ul className="space-y-3">
-          {items.map((c) => (
-            <li key={c.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
-              <div className="text-sm text-gray-300">
-                <span className="font-medium text-white">{authors[c.authorId] ?? "User"}</span>
-                <span className="ml-2 text-xs text-gray-400">{fmtDate(c.createdAt)}</span>
-              </div>
-              <div className="mt-1 text-gray-100 whitespace-pre-wrap break-words">
-                {c.body}
-              </div>
-            </li>
-          ))}
+          {items.map((c) => {
+            const canDelete = enableDelete && user?.uid && (user.uid === c.authorId || (storyOwner && user.uid === storyOwner));
+            return (
+              <li key={c.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <div className="text-sm text-gray-300">
+                      <span className="font-medium text-white">{authors[c.authorId] ?? "User"}</span>
+                      <span className="ml-2 text-xs text-gray-400">{fmtDate(c.createdAt)}</span>
+                    </div>
+                    <div className="mt-1 text-gray-100 whitespace-pre-wrap break-words">
+                      {c.body}
+                    </div>
+                  </div>
+                  {canDelete && (
+                    <button
+                      onClick={() => remove(c.id)}
+                      className="shrink-0 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5"
+                      title="Delete comment"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 

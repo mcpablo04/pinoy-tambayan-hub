@@ -6,7 +6,7 @@ import { useRouter } from "next/router";
 import {
   collection,
   getDocs,
-  limit,
+  limit as fsLimit,
   orderBy,
   query,
   startAfter,
@@ -31,12 +31,16 @@ type Story = {
 };
 
 const PAGE_SIZE = 10;
+const slugOrId = (s: Story) => (s.slug && s.slug.length > 0 ? s.slug : s.id);
+const fmtDate = (ts?: Timestamp) => {
+  try {
+    if (!ts) return "";
+    const d = (ts as any).toDate ? (ts as any).toDate() as Date : new Date((ts as any).seconds * 1000);
+    return d.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
+  } catch { return ""; }
+};
 
-function slugOrId(s: Story) {
-  return s.slug && s.slug.length > 0 ? s.slug : s.id;
-}
-
-/** Skeleton card for loading state */
+/** Skeleton card */
 function SkeletonStoryCard() {
   return (
     <li className="rounded-xl border border-white/10 bg-white/5 p-4">
@@ -48,11 +52,6 @@ function SkeletonStoryCard() {
           <div className="h-5 w-16 rounded-full bg-white/10" />
           <div className="h-5 w-10 rounded-full bg-white/10" />
         </div>
-        <div className="flex gap-2">
-          <div className="h-8 w-16 rounded-full bg-white/10" />
-          <div className="h-8 w-16 rounded-full bg-white/10" />
-          <div className="h-8 w-16 rounded-full bg-white/10" />
-        </div>
         <div className="h-4 w-32 rounded bg-white/10" />
       </div>
     </li>
@@ -61,24 +60,16 @@ function SkeletonStoryCard() {
 
 export default function StoriesFeed() {
   const router = useRouter();
-
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // pagination state
   const [page, setPage] = useState(0);
   const [hasNextPage, setHasNextPage] = useState(false);
-
-  // store the first & last visible doc snapshot for each loaded page
   const [firstCursors, setFirstCursors] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
   const [lastCursors, setLastCursors] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
-
-  // top anchor to scroll into view after pagination
   const topRef = useRef<HTMLDivElement | null>(null);
 
-  const baseQuery = useCallback(() => {
-    return query(collection(db, "stories"), orderBy("createdAt", "desc"));
-  }, []);
+  const baseQuery = useCallback(() => query(collection(db, "stories"), orderBy("createdAt", "desc")), []);
 
   const toStory = (d: QueryDocumentSnapshot<DocumentData>): Story | null => {
     const s = d.data() as any;
@@ -95,34 +86,28 @@ export default function StoriesFeed() {
     };
   };
 
-  /** Fixed-header aware scroll helper */
   const scrollTopWithOffset = useCallback(() => {
     const el = topRef.current;
-    if (!el) {
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      return;
-    }
+    if (!el) { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); return; }
     const rect = el.getBoundingClientRect();
     const yNow = window.pageYOffset || document.documentElement.scrollTop;
-    // Nav height: ~80px on mobile (pt-20), ~96px on md+ (md:pt-24)
     const navH = window.matchMedia("(min-width: 768px)").matches ? 96 : 80;
-    const y = rect.top + yNow - navH - 4; // tiny cushion
+    const y = rect.top + yNow - navH - 4;
     window.scrollTo({ top: Math.max(0, y), left: 0, behavior: "auto" });
   }, []);
 
   async function loadPage(direction: "init" | "next" | "prev") {
     setLoading(true);
-
     let q = baseQuery();
     let snap;
 
     if (direction === "init") {
-      q = query(q, limit(PAGE_SIZE + 1));
+      q = query(q, fsLimit(PAGE_SIZE + 1));
       snap = await getDocs(q);
     } else if (direction === "next") {
       const last = lastCursors[page];
       if (!last) { setLoading(false); return; }
-      q = query(q, startAfter(last), limit(PAGE_SIZE + 1));
+      q = query(q, startAfter(last), fsLimit(PAGE_SIZE + 1));
       snap = await getDocs(q);
     } else {
       const first = firstCursors[page];
@@ -133,73 +118,34 @@ export default function StoriesFeed() {
 
     const docs = snap.docs;
     const mapped = docs.map(toStory).filter(Boolean) as Story[];
-
     const hasMore = mapped.length > PAGE_SIZE;
-    const pageItems =
-      direction === "prev" ? mapped.slice(-PAGE_SIZE) : mapped.slice(0, PAGE_SIZE);
-
+    const pageItems = direction === "prev" ? mapped.slice(-PAGE_SIZE) : mapped.slice(0, PAGE_SIZE);
     setStories(pageItems);
 
-    const firstDoc = direction === "prev"
-      ? docs.slice(-PAGE_SIZE)[0] ?? docs[0]
-      : docs[0];
-    const lastDoc = direction === "prev"
-      ? docs.slice(-1)[0]
-      : docs[Math.min(PAGE_SIZE - 1, docs.length - 1)];
+    const firstDoc = direction === "prev" ? docs.slice(-PAGE_SIZE)[0] ?? docs[0] : docs[0];
+    const lastDoc = direction === "prev" ? docs.slice(-1)[0] : docs[Math.min(PAGE_SIZE - 1, docs.length - 1)];
 
     if (firstDoc && lastDoc) {
       if (direction === "init") {
-        setFirstCursors([firstDoc]);
-        setLastCursors([lastDoc]);
-        setPage(0);
-        setHasNextPage(hasMore);
+        setFirstCursors([firstDoc]); setLastCursors([lastDoc]); setPage(0); setHasNextPage(hasMore);
       } else if (direction === "next") {
-        setFirstCursors((prev) => {
-          const arr = prev.slice(0, page + 1);
-          arr.push(firstDoc);
-          return arr;
-        });
-        setLastCursors((prev) => {
-          const arr = prev.slice(0, page + 1);
-          arr.push(lastDoc);
-          return arr;
-        });
-        setPage((p) => p + 1);
-        setHasNextPage(hasMore);
+        setFirstCursors((p) => { const a = p.slice(0, page + 1); a.push(firstDoc); return a; });
+        setLastCursors((p) => { const a = p.slice(0, page + 1); a.push(lastDoc); return a; });
+        setPage((p) => p + 1); setHasNextPage(hasMore);
       } else {
-        setFirstCursors((prev) => {
-          const arr = prev.slice(0, page);
-          arr[arr.length - 1] = firstDoc;
-          return arr;
-        });
-        setLastCursors((prev) => {
-          const arr = prev.slice(0, page);
-          arr[arr.length - 1] = lastDoc;
-          return arr;
-        });
-        setPage((p) => Math.max(0, p - 1));
-        setHasNextPage(true);
+        setFirstCursors((p) => { const a = p.slice(0, page); a[a.length - 1] = firstDoc; return a; });
+        setLastCursors((p) => { const a = p.slice(0, page); a[a.length - 1] = lastDoc; return a; });
+        setPage((p) => Math.max(0, p - 1)); setHasNextPage(true);
       }
     } else {
-      if (direction === "init") {
-        setFirstCursors([]);
-        setLastCursors([]);
-        setPage(0);
-        setHasNextPage(false);
-      } else if (direction === "next") {
-        setHasNextPage(false);
-      }
+      if (direction === "init") { setFirstCursors([]); setLastCursors([]); setPage(0); setHasNextPage(false); }
+      else if (direction === "next") { setHasNextPage(false); }
     }
 
     setLoading(false);
-
-    // after render, jump to top with offset so header doesn't cover it
-    requestAnimationFrame(() => {
-      scrollTopWithOffset();
-    });
+    requestAnimationFrame(scrollTopWithOffset);
   }
 
-  // On first mount, force page top (in case user navigated while scrolled)
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     loadPage("init");
@@ -212,28 +158,19 @@ export default function StoriesFeed() {
   return (
     <section className="section">
       <div className="container-page max-w-5xl">
-        {/* anchor for offset scrolling */}
         <div ref={topRef} style={{ scrollMarginTop: "100px" }} />
 
-        {/* Header */}
         <div className="flex items-center justify-between mb-1">
           <h1 className="page-title mb-0">Stories</h1>
-          <Link href="/stories/new" className="btn btn-primary text-sm">
-            Write a Story
-          </Link>
+          <Link href="/stories/new" className="btn btn-primary text-sm">Write a Story</Link>
         </div>
-        <p className="text-xs text-gray-400 mb-4">
-          Drama • Romance • One-shots from the community
-        </p>
+        <p className="text-xs text-gray-400 mb-4">Drama • Romance • One-shots from the community</p>
 
-        {/* LIST: 1 column on mobile, 2 on md+ */}
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {loading ? (
             Array.from({ length: PAGE_SIZE }).map((_, i) => <SkeletonStoryCard key={i} />)
           ) : stories.length === 0 ? (
-            <li className="col-span-full text-gray-300">
-              No stories yet. Be the first to write!
-            </li>
+            <li className="col-span-full text-gray-300">No stories yet. Be the first to write!</li>
           ) : (
             stories.map((s) => (
               <li
@@ -242,48 +179,26 @@ export default function StoriesFeed() {
                 tabIndex={0}
                 onClick={() => router.push(`/stories/${slugOrId(s)}`)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    router.push(`/stories/${slugOrId(s)}`);
-                  }
+                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/stories/${slugOrId(s)}`); }
                 }}
                 className="cursor-pointer rounded-xl border border-white/10 bg-white/5 p-4 hover:bg-white/10 transition"
               >
                 <h2 className="text-lg font-medium text-white">
-                  <Link
-                    href={`/stories/${slugOrId(s)}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="hover:underline"
-                  >
+                  <Link href={`/stories/${slugOrId(s)}`} onClick={(e) => e.stopPropagation()} className="hover:underline">
                     {s.title}
                   </Link>
                 </h2>
 
                 <p className="text-sm text-gray-300 mt-1">
                   by <span className="font-medium text-white">{s.authorName}</span>
-                  {s.authorHandle ? (
-                    <>
-                      {" "}·{" "}
-                      <Link
-                        href={`/u/${s.authorHandle}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="hover:underline"
-                      >
-                        @{s.authorHandle}
-                      </Link>
-                    </>
-                  ) : null}
+                  {s.authorHandle ? <> · <Link href={`/u/${s.authorHandle}`} onClick={(e) => e.stopPropagation()} className="hover:underline">@{s.authorHandle}</Link></> : null}
+                  {s.createdAt ? <> · <span className="text-gray-400">{fmtDate(s.createdAt)}</span></> : null}
                 </p>
 
-                {s.tags && s.tags.length > 0 ? (
+                {s.tags?.length ? (
                   <div className="mt-2 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                     {s.tags.map((t) => (
-                      <span
-                        key={t}
-                        className="text-xs px-2 py-1 rounded-full bg-white/10 text-gray-200"
-                      >
-                        #{t}
-                      </span>
+                      <span key={t} className="text-xs px-2 py-1 rounded-full bg-white/10 text-gray-200">#{t}</span>
                     ))}
                   </div>
                 ) : null}
@@ -300,15 +215,12 @@ export default function StoriesFeed() {
           )}
         </ul>
 
-        {/* PAGINATION CONTROLS */}
         <div className="mt-6 flex items-center justify-between">
           <button
             disabled={!canPrev || loading}
             onClick={() => loadPage("prev")}
             className={`px-3 py-2 rounded-md text-sm font-medium border border-white/10 ${
-              canPrev && !loading
-                ? "bg-white/5 text-gray-100 hover:bg-white/10"
-                : "bg-white/5 text-gray-500 cursor-not-allowed"
+              canPrev && !loading ? "bg-white/5 text-gray-100 hover:bg-white/10" : "bg-white/5 text-gray-500 cursor-not-allowed"
             }`}
             aria-disabled={!canPrev || loading}
           >
@@ -321,9 +233,7 @@ export default function StoriesFeed() {
             disabled={!canNext || loading}
             onClick={() => loadPage("next")}
             className={`px-3 py-2 rounded-md text-sm font-medium border border-white/10 ${
-              canNext && !loading
-                ? "bg-white/5 text-gray-100 hover:bg-white/10"
-                : "bg-white/5 text-gray-500 cursor-not-allowed"
+              canNext && !loading ? "bg-white/5 text-gray-100 hover:bg-white/10" : "bg-white/5 text-gray-500 cursor-not-allowed"
             }`}
             aria-disabled={!canNext || loading}
           >

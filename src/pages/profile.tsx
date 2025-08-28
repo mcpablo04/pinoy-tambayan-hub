@@ -1,6 +1,7 @@
 // src/pages/profile.tsx
 "use client";
 
+import type { ChangeEvent } from "react";
 import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/router";
@@ -20,13 +21,130 @@ import {
   getDocs,
   collectionGroup,
   getCountFromServer,
-  limit,
+  limit as fsLimit,
   orderBy,
+  deleteDoc,
+  writeBatch,
   type Timestamp,
+  type Query,
+  type CollectionReference,
 } from "firebase/firestore";
 import type { FirebaseError } from "firebase/app";
 import Skeleton from "../components/Skeleton";
 
+/* --------------------------- tiny toast system --------------------------- */
+type ToastKind = "success" | "error" | "info";
+type ToastItem = { id: number; kind: ToastKind; text: string };
+
+function ToastViewport({ toasts, onClose }: { toasts: ToastItem[]; onClose: (id: number) => void }) {
+  return (
+    <div className="fixed z-[100] bottom-4 right-4 flex flex-col gap-2 w-[min(90vw,340px)]">
+      {toasts.map((t) => (
+        <Toast key={t.id} item={t} onClose={() => onClose(t.id)} />
+      ))}
+    </div>
+  );
+}
+
+function Toast({ item, onClose }: { item: ToastItem; onClose: () => void }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    setShow(true);
+    const hide = setTimeout(() => setShow(false), 2300);
+    const done = setTimeout(onClose, 2600);
+    return () => {
+      clearTimeout(hide);
+      clearTimeout(done);
+    };
+  }, [onClose]);
+
+  const tone =
+    item.kind === "success"
+      ? "bg-emerald-600/90 border-emerald-400/40"
+      : item.kind === "error"
+      ? "bg-red-600/90 border-red-400/40"
+      : "bg-gray-800/90 border-white/10";
+
+  const icon = item.kind === "success" ? "✅" : item.kind === "error" ? "⚠️" : "ℹ️";
+
+  return (
+    <div
+      className={`pointer-events-auto rounded-lg border text-white shadow-xl backdrop-blur-sm px-3 py-2 text-sm transition-all duration-300
+        ${tone} ${show ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-2">
+        <span aria-hidden>{icon}</span>
+        <div className="flex-1">{item.text}</div>
+        <button onClick={onClose} className="ml-2 text-white/80 hover:text-white">✕</button>
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------- confirm modal --------------------------- */
+type ConfirmState = {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmText?: string;
+  danger?: boolean;
+  resolve?: (ok: boolean) => void;
+};
+
+function ConfirmDialog({ state, setState }: { state: ConfirmState; setState: (s: ConfirmState) => void }) {
+  const close = (ok: boolean) => {
+    state.resolve?.(ok);
+    setState({ ...state, open: false });
+  };
+  return (
+    <div className={`fixed inset-0 z-[90] ${state.open ? "" : "pointer-events-none"}`} aria-hidden={!state.open}>
+      {/* overlay */}
+      <div
+        className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${state.open ? "opacity-100" : "opacity-0"}`}
+        onClick={() => close(false)}
+      />
+      {/* dialog */}
+      <div
+        className={`absolute inset-0 flex items-end sm:items-center justify-center p-4 transition-all duration-200
+          ${state.open ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+      >
+        <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0b0f19] p-5 shadow-2xl">
+          <h3 className="text-lg font-semibold text-white">{state.title}</h3>
+          <p className="mt-2 text-sm text-gray-300">{state.message}</p>
+          <div className="mt-4 flex flex-col sm:flex-row sm:justify-end gap-2">
+            <button
+              onClick={() => close(false)}
+              className="px-4 py-2 rounded-md border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => close(true)}
+              className={`px-4 py-2 rounded-md text-white ${
+                state.danger ? "bg-red-600 hover:bg-red-500" : "bg-blue-600 hover:bg-blue-500"
+              }`}
+            >
+              {state.confirmText ?? "Confirm"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+async function askConfirm(
+  setState: (s: ConfirmState) => void,
+  opts: Omit<ConfirmState, "open" | "resolve">
+) {
+  return new Promise<boolean>((resolve) => {
+    setState({ ...opts, open: true, resolve });
+  });
+}
+
+/* ---------------------------- page types ---------------------------- */
 type AnyProfile =
   | {
       displayName?: string | null;
@@ -67,6 +185,20 @@ const toHandleBase = (name: string) =>
 const toStoryLink = (id: string, slug?: string | null) =>
   `/stories/${slug && slug.length > 0 ? slug : id}`;
 
+/** Best-effort subcollection cleanup */
+async function deleteSubcollection(col: CollectionReference | Query, batchSize = 400) {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const snap = await getDocs(query(col, fsLimit(batchSize)));
+    if (snap.empty) break;
+    const batch = writeBatch(db);
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    if (snap.size < batchSize) break;
+  }
+}
+
+/* =============================== PAGE =============================== */
 export default function ProfilePage() {
   const { user, profile, loading, updateDisplayName, updatePhotoURL, signOutApp } = useAuth();
   const router = useRouter();
@@ -76,7 +208,19 @@ export default function ProfilePage() {
   // Editable fields
   const [name, setName] = useState<string>(p?.displayName ?? "");
   const [photo, setPhoto] = useState<string>(p?.photoURL ?? "");
-  const [msg, setMsg] = useState<string | null>(null);
+
+  // Toasts
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const pushToast = (kind: ToastKind, text: string) =>
+    setToasts((prev) => [...prev, { id: Date.now() + Math.random(), kind, text }]);
+  const popToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  // Confirm
+  const [confirm, setConfirm] = useState<ConfirmState>({
+    open: false,
+    title: "",
+    message: "",
+  });
 
   // Upload state
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
@@ -93,7 +237,7 @@ export default function ProfilePage() {
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
 
-  // Limits & “view all”
+  // Limits
   const [storiesLimit, setStoriesLimit] = useState(INITIAL_LIMIT);
   const [commentsLimit, setCommentsLimit] = useState(INITIAL_LIMIT);
 
@@ -111,9 +255,7 @@ export default function ProfilePage() {
       try {
         await reload(auth.currentUser);
         if (!auth.currentUser.emailVerified) router.replace("/auth/verify-prompt");
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     })();
   }, [loading, router]);
 
@@ -139,8 +281,8 @@ export default function ProfilePage() {
       : null;
   }, [p?.createdAt?.seconds]);
 
-  // -------- Avatar Upload --------
-  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  /* --------------------------- Avatar Upload --------------------------- */
+  const onPickFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const inputEl = e.currentTarget;
     const f = inputEl.files?.[0];
     if (!f || !user) return;
@@ -174,16 +316,18 @@ export default function ProfilePage() {
 
       setUploadMsg("Uploaded!");
       setTimeout(() => setUploadMsg(null), 1500);
+      pushToast("success", "Profile photo updated.");
     } catch (err: any) {
       console.error(err);
       setUploadMsg(err?.message ?? "Upload failed.");
+      pushToast("error", "Upload failed. Please try again.");
     } finally {
       setUploadBusy(false);
       inputEl.value = "";
     }
   };
 
-  // -------- Username claim --------
+  /* --------------------------- Username claim -------------------------- */
   async function claimUsernameFromDisplayName(displayName: string) {
     if (!user) return null;
 
@@ -249,16 +393,15 @@ export default function ProfilePage() {
     return chosen;
   }
 
-  // -------- Save profile --------
+  /* ------------------------------ Save -------------------------------- */
   const save = async () => {
     if (!user) return;
-    setMsg(null);
 
     const newName = name.trim();
     const newPhoto = (photo ?? "").trim();
 
     if (newName.length < 3 || newName.length > 40) {
-      setMsg("Display name must be between 3 and 40 characters.");
+      pushToast("error", "Display name must be between 3 and 40 characters.");
       return;
     }
 
@@ -268,7 +411,7 @@ export default function ProfilePage() {
       const snap = await getDocs(qName);
       const takenByOther = snap.docs.some((d) => d.id !== user.uid);
       if (takenByOther) {
-        setMsg("That display name is already taken.");
+        pushToast("error", "That display name is already taken.");
         return;
       }
     }
@@ -288,11 +431,10 @@ export default function ProfilePage() {
     }
 
     const chosen = await claimUsernameFromDisplayName(newName || "user");
-    setMsg(chosen && chosen !== currentLower ? `Saved. Your handle is @${chosen}.` : "Profile updated!");
-    setTimeout(() => setMsg(null), 2000);
+    pushToast("success", chosen ? `Saved. Your handle is @${chosen}.` : "Profile updated!");
   };
 
-  // -------- Loaders --------
+  /* ------------------------------ Loaders ------------------------------ */
   const loadMyStories = useCallback(
     async (uid: string, lim: number) => {
       setStoriesLoading(true);
@@ -301,7 +443,7 @@ export default function ProfilePage() {
           collection(db, "stories"),
           where("authorId", "==", uid),
           orderBy("createdAt", "desc"),
-          limit(lim)
+          fsLimit(lim)
         );
         const sSnap = await getDocs(storiesQ);
         const sList: MyStory[] = [];
@@ -329,7 +471,7 @@ export default function ProfilePage() {
 
   async function fallbackLoadMyComments(uid: string, lim: number): Promise<MyComment[]> {
     const recentStoriesSnap = await getDocs(
-      query(collection(db, "stories"), orderBy("createdAt", "desc"), limit(40))
+      query(collection(db, "stories"), orderBy("createdAt", "desc"), fsLimit(40))
     );
 
     const storyIds = recentStoriesSnap.docs.map((d) => d.id);
@@ -341,7 +483,7 @@ export default function ProfilePage() {
           collection(db, "stories", sid, "comments"),
           where("authorId", "==", uid),
           orderBy("createdAt", "desc"),
-          limit(3)
+          fsLimit(3)
         )
       );
       csnap.forEach((d) => {
@@ -374,7 +516,7 @@ export default function ProfilePage() {
           collectionGroup(db, "comments"),
           where("authorId", "==", uid),
           orderBy("createdAt", "desc"),
-          limit(lim)
+          fsLimit(lim)
         );
         const cSnap = await getDocs(commentsQ);
         const cList: MyComment[] = [];
@@ -401,7 +543,7 @@ export default function ProfilePage() {
     []
   );
 
-  // -------- Counts (once) --------
+  // Counts on mount
   useEffect(() => {
     (async () => {
       if (!user?.uid) {
@@ -439,7 +581,7 @@ export default function ProfilePage() {
     })();
   }, [user?.uid]);
 
-  // -------- Lists (react to limits) --------
+  // Lists react to limits
   useEffect(() => {
     if (!user?.uid) return;
     loadMyStories(user.uid, storiesLimit);
@@ -447,25 +589,96 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user?.uid) return;
-    loadMyComments(user.uid, commentsLimit,);
+    loadMyComments(user.uid, commentsLimit);
   }, [user?.uid, commentsLimit, loadMyComments]);
 
-  // Derived flags for “View all”
   const showStoriesViewAll =
-    !storiesLoading &&
-    storiesLimit === INITIAL_LIMIT &&
-    ((storyCount ?? stories.length) > stories.length);
-
+    !storiesLoading && storiesLimit === INITIAL_LIMIT && ((storyCount ?? stories.length) > stories.length);
   const showCommentsViewAll =
-    !commentsLoading &&
-    commentsLimit === INITIAL_LIMIT &&
-    ((commentCount ?? comments.length) > comments.length);
+    !commentsLoading && commentsLimit === INITIAL_LIMIT && ((commentCount ?? comments.length) > comments.length);
 
-  if (loading || !user) return <div className="section"><div className="container-page">Loading…</div></div>;
+  /* ------------------------------ Deletions ----------------------------- */
+  const deleteStory = useCallback(
+    async (sid: string) => {
+      if (!user?.uid) return;
+
+      const ok = await askConfirm(setConfirm, {
+        title: "Delete story?",
+        message:
+          "The story will be removed immediately. Comments and reactions will be cleaned up where allowed. This cannot be undone.",
+        confirmText: "Delete story",
+        danger: true,
+      });
+      if (!ok) return;
+
+      try {
+        // delete the story first (author is allowed)
+        await deleteDoc(doc(db, "stories", sid));
+
+        // best-effort cleanup (ignore errors if rules block)
+        try {
+          await deleteSubcollection(collection(db, "stories", sid, "comments"));
+        } catch {}
+        try {
+          await deleteSubcollection(collection(db, "stories", sid, "reactions"));
+        } catch {}
+
+        // refresh list to keep it full
+        await loadMyStories(user.uid, storiesLimit);
+
+        if (storyCount != null) setStoryCount((c) => (c ?? 1) - 1);
+        pushToast("success", "Story deleted.");
+      } catch (e) {
+        console.error("Delete story error:", e);
+        pushToast("error", "Failed to delete story. Please try again.");
+      }
+    },
+    [user?.uid, storiesLimit, loadMyStories, storyCount]
+  );
+
+  const deleteComment = useCallback(
+    async (sid: string, cid: string) => {
+      if (!user?.uid) return;
+
+      const ok = await askConfirm(setConfirm, {
+        title: "Delete comment?",
+        message: "This comment will be removed. This cannot be undone.",
+        confirmText: "Delete comment",
+        danger: true,
+      });
+      if (!ok) return;
+
+      try {
+        await deleteDoc(doc(db, "stories", sid, "comments", cid));
+
+        // refresh so recent/view-all stays packed
+        await loadMyComments(user.uid, commentsLimit);
+
+        if (commentCount != null) setCommentCount((c) => (c ?? 1) - 1);
+        pushToast("success", "Comment deleted.");
+      } catch (e) {
+        console.error("Delete comment error:", e);
+        pushToast("error", "Failed to delete comment. Please try again.");
+      }
+    },
+    [user?.uid, commentsLimit, loadMyComments, commentCount]
+  );
+
+  if (loading || !user) {
+    return (
+      <div className="section">
+        <div className="container-page">Loading…</div>
+      </div>
+    );
+  }
 
   return (
     <section className="section">
       <div className="container-page max-w-5xl">
+        {/* Confirm + Toasts */}
+        <ConfirmDialog state={confirm} setState={setConfirm} />
+        <ToastViewport toasts={toasts} onClose={popToast} />
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
           <div className="flex items-center gap-4">
@@ -491,7 +704,12 @@ export default function ProfilePage() {
               <div className="text-sm text-gray-400 truncate">{p?.email || user.email}</div>
               <div className="text-xs text-gray-500">
                 {joinedDate ? `Joined ${joinedDate}` : ""}
-                {currentLower ? <> • <span className="text-gray-300">@{currentLower}</span></> : null}
+                {currentLower ? (
+                  <>
+                    {" "}
+                    • <span className="text-gray-300">@{currentLower}</span>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>
@@ -531,11 +749,6 @@ export default function ProfilePage() {
               <button onClick={save} className="btn btn-primary w-full sm:w-auto">
                 Save changes
               </button>
-              {msg && (
-                <div className="text-green-400 text-sm" aria-live="polite">
-                  {msg}
-                </div>
-              )}
             </div>
           </section>
         </div>
@@ -545,13 +758,13 @@ export default function ProfilePage() {
           <div className="card h-24">
             <div className="text-gray-400 text-xs">Posts</div>
             <div className="mt-1 text-2xl text-white font-semibold">
-              {statsLoading ? <Skeleton className="h-6 w-14" /> : (storyCount ?? "—")}
+              {statsLoading ? <Skeleton className="h-6 w-14" /> : storyCount ?? "—"}
             </div>
           </div>
           <div className="card h-24">
             <div className="text-gray-400 text-xs">Comments</div>
             <div className="mt-1 text-2xl text-white font-semibold">
-              {statsLoading ? <Skeleton className="h-6 w-14" /> : (commentCount ?? "—")}
+              {statsLoading ? <Skeleton className="h-6 w-14" /> : commentCount ?? "—"}
             </div>
           </div>
           <div className="card h-24">
@@ -580,20 +793,34 @@ export default function ProfilePage() {
             ) : stories.length === 0 ? (
               <p className="text-gray-400">
                 You haven’t written anything yet.{" "}
-                <Link href="/stories/new" className="text-blue-400 underline">Start here</Link>.
+                <Link href="/stories/new" className="text-blue-400 underline">
+                  Start here
+                </Link>
+                .
               </p>
             ) : (
               <>
                 <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
                   {stories.map((s) => (
                     <li key={s.id} className="card p-3">
-                      <h3 className="font-medium">
-                        <Link href={toStoryLink(s.id, s.slug)} className="hover:underline">
-                          {s.title}
-                        </Link>
-                      </h3>
-                      <div className="text-xs text-gray-400 mt-1">
-                        {s.status || "published"} · {s.visibility || "public"}
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium">
+                            <Link href={toStoryLink(s.id, s.slug)} className="hover:underline">
+                              {s.title}
+                            </Link>
+                          </h3>
+                          <div className="text-xs text-gray-400 mt-1">
+                            {s.status || "published"} · {s.visibility || "public"}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteStory(s.id)}
+                          className="shrink-0 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5"
+                          title="Delete story"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </li>
                   ))}
@@ -630,14 +857,25 @@ export default function ProfilePage() {
                 <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
                   {comments.map((c) => (
                     <li key={c.id} className="card p-3">
-                      <p className="text-gray-100 whitespace-pre-wrap break-words">
-                        {c.body.length > 160 ? c.body.slice(0, 160) + "…" : c.body}
-                      </p>
-                      <div className="text-xs text-gray-400 mt-1">
-                        on{" "}
-                        <Link href={toStoryLink(c.storyId, null)} className="text-blue-400 hover:underline">
-                          this story
-                        </Link>
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1">
+                          <p className="text-gray-100 whitespace-pre-wrap break-words">
+                            {c.body.length > 160 ? c.body.slice(0, 160) + "…" : c.body}
+                          </p>
+                          <div className="text-xs text-gray-400 mt-1">
+                            on{" "}
+                            <Link href={toStoryLink(c.storyId, null)} className="text-blue-400 hover:underline">
+                              this story
+                            </Link>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteComment(c.storyId, c.id)}
+                          className="shrink-0 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5"
+                          title="Delete comment"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </li>
                   ))}
