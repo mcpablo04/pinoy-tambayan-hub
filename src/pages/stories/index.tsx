@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import {
   collection,
@@ -69,9 +69,12 @@ export default function StoriesFeed() {
   const [page, setPage] = useState(0);
   const [hasNextPage, setHasNextPage] = useState(false);
 
-  // we store the first & last visible doc snapshot for each loaded page
+  // store the first & last visible doc snapshot for each loaded page
   const [firstCursors, setFirstCursors] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
   const [lastCursors, setLastCursors] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
+
+  // top anchor to scroll into view after pagination
+  const topRef = useRef<HTMLDivElement | null>(null);
 
   const baseQuery = useCallback(() => {
     return query(collection(db, "stories"), orderBy("createdAt", "desc"));
@@ -92,6 +95,21 @@ export default function StoriesFeed() {
     };
   };
 
+  /** Fixed-header aware scroll helper */
+  const scrollTopWithOffset = useCallback(() => {
+    const el = topRef.current;
+    if (!el) {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    const yNow = window.pageYOffset || document.documentElement.scrollTop;
+    // Nav height: ~80px on mobile (pt-20), ~96px on md+ (md:pt-24)
+    const navH = window.matchMedia("(min-width: 768px)").matches ? 96 : 80;
+    const y = rect.top + yNow - navH - 4; // tiny cushion
+    window.scrollTo({ top: Math.max(0, y), left: 0, behavior: "auto" });
+  }, []);
+
   async function loadPage(direction: "init" | "next" | "prev") {
     setLoading(true);
 
@@ -103,18 +121,12 @@ export default function StoriesFeed() {
       snap = await getDocs(q);
     } else if (direction === "next") {
       const last = lastCursors[page];
-      if (!last) {
-        setLoading(false);
-        return;
-      }
+      if (!last) { setLoading(false); return; }
       q = query(q, startAfter(last), limit(PAGE_SIZE + 1));
       snap = await getDocs(q);
     } else {
       const first = firstCursors[page];
-      if (!first) {
-        setLoading(false);
-        return;
-      }
+      if (!first) { setLoading(false); return; }
       q = query(q, endBefore(first), limitToLast(PAGE_SIZE + 1));
       snap = await getDocs(q);
     }
@@ -180,9 +192,16 @@ export default function StoriesFeed() {
     }
 
     setLoading(false);
+
+    // after render, jump to top with offset so header doesn't cover it
+    requestAnimationFrame(() => {
+      scrollTopWithOffset();
+    });
   }
 
+  // On first mount, force page top (in case user navigated while scrolled)
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     loadPage("init");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -191,14 +210,15 @@ export default function StoriesFeed() {
   const canNext = hasNextPage || page < lastCursors.length - 1;
 
   return (
-    <main className="pt-20 sm:pt-24 pb-16">
-      <div className="mx-auto max-w-5xl px-4">
+    <section className="section">
+      <div className="container-page max-w-5xl">
+        {/* anchor for offset scrolling */}
+        <div ref={topRef} style={{ scrollMarginTop: "100px" }} />
+
+        {/* Header */}
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-2xl font-semibold text-white">Stories</h1>
-          <Link
-            href="/stories/new"
-            className="px-3 py-2 rounded-md bg-white text-black text-sm font-medium hover:bg-white/90"
-          >
+          <h1 className="page-title mb-0">Stories</h1>
+          <Link href="/stories/new" className="btn btn-primary text-sm">
             Write a Story
           </Link>
         </div>
@@ -209,9 +229,7 @@ export default function StoriesFeed() {
         {/* LIST: 1 column on mobile, 2 on md+ */}
         <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {loading ? (
-            Array.from({ length: PAGE_SIZE }).map((_, i) => (
-              <SkeletonStoryCard key={i} />
-            ))
+            Array.from({ length: PAGE_SIZE }).map((_, i) => <SkeletonStoryCard key={i} />)
           ) : stories.length === 0 ? (
             <li className="col-span-full text-gray-300">
               No stories yet. Be the first to write!
@@ -232,7 +250,6 @@ export default function StoriesFeed() {
                 className="cursor-pointer rounded-xl border border-white/10 bg-white/5 p-4 hover:bg-white/10 transition"
               >
                 <h2 className="text-lg font-medium text-white">
-                  {/* IMPORTANT: use Link, not <a href> */}
                   <Link
                     href={`/stories/${slugOrId(s)}`}
                     onClick={(e) => e.stopPropagation()}
@@ -243,12 +260,10 @@ export default function StoriesFeed() {
                 </h2>
 
                 <p className="text-sm text-gray-300 mt-1">
-                  by{" "}
-                  <span className="font-medium text-white">{s.authorName}</span>
+                  by <span className="font-medium text-white">{s.authorName}</span>
                   {s.authorHandle ? (
                     <>
-                      {" "}
-                      ·{" "}
+                      {" "}·{" "}
                       <Link
                         href={`/u/${s.authorHandle}`}
                         onClick={(e) => e.stopPropagation()}
@@ -261,10 +276,7 @@ export default function StoriesFeed() {
                 </p>
 
                 {s.tags && s.tags.length > 0 ? (
-                  <div
-                    className="mt-2 flex flex-wrap gap-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <div className="mt-2 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                     {s.tags.map((t) => (
                       <span
                         key={t}
@@ -318,7 +330,9 @@ export default function StoriesFeed() {
             Next →
           </button>
         </div>
+
+        <div className="page-bottom-spacer" />
       </div>
-    </main>
+    </section>
   );
 }

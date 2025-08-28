@@ -447,7 +447,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user?.uid) return;
-    loadMyComments(user.uid, commentsLimit);
+    loadMyComments(user.uid, commentsLimit,);
   }, [user?.uid, commentsLimit, loadMyComments]);
 
   // Derived flags for “View all”
@@ -461,13 +461,13 @@ export default function ProfilePage() {
     commentsLimit === INITIAL_LIMIT &&
     ((commentCount ?? comments.length) > comments.length);
 
-  if (loading || !user) return <div className="pt-20 px-4">Loading…</div>;
+  if (loading || !user) return <div className="section"><div className="container-page">Loading…</div></div>;
 
   return (
-    <main className="pt-20 sm:pt-24 pb-20">
-      <div className="mx-auto max-w-5xl px-4">
-        {/* Header (mobile-first) */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+    <section className="section">
+      <div className="container-page max-w-5xl">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
           <div className="flex items-center gap-4">
             <div className="avatar h-14 w-14 rounded-full overflow-hidden bg-gray-700 shrink-0">
               {photo ? (
@@ -487,9 +487,7 @@ export default function ProfilePage() {
             </div>
 
             <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-semibold text-white truncate">
-                {p?.displayName || "My Profile"}
-              </h1>
+              <h1 className="page-title mb-0">{p?.displayName || "My Profile"}</h1>
               <div className="text-sm text-gray-400 truncate">{p?.email || user.email}</div>
               <div className="text-xs text-gray-500">
                 {joinedDate ? `Joined ${joinedDate}` : ""}
@@ -499,19 +497,17 @@ export default function ProfilePage() {
           </div>
 
           <div className="sm:ml-auto w-full sm:w-auto">
-            <Link
-              href="/stories/new"
-              className="block text-center rounded-md bg-white text-black text-sm font-medium hover:bg-white/90 px-3 py-2"
-            >
+            <Link href="/stories/new" className="btn btn-primary w-full sm:w-auto">
               Write a Story
             </Link>
           </div>
         </div>
 
-        {/* Upload + name edit */}
+        {/* Profile editor */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <section>
-            <h2 className="text-base sm:text-lg font-semibold text-white mb-3">Profile Photo</h2>
+          <section className="card">
+            <h2 className="text-base sm:text-lg font-semibold mb-3">Profile Photo</h2>
+            <label className="text-sm text-gray-400 block mb-2">Upload a new avatar (max 4 MB)</label>
             <input
               type="file"
               accept="image/*"
@@ -522,20 +518,17 @@ export default function ProfilePage() {
             {uploadMsg && <div className="text-sm text-gray-300 mt-2">{uploadMsg}</div>}
           </section>
 
-          <section>
-            <h2 className="text-base sm:text-lg font-semibold text-white mb-3">Display Name</h2>
+          <section className="card">
+            <h2 className="text-base sm:text-lg font-semibold mb-3">Display Name</h2>
             <input
-              className="w-full p-3 rounded bg-gray-800 text-white placeholder-gray-400"
+              className="input"
               placeholder="Display name (3–40 chars, must be unique)"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={40}
             />
-            <div className="mt-3 flex flex-col sm:flex-row gap-2">
-              <button
-                onClick={save}
-                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 rounded px-4 py-2 font-semibold"
-              >
+            <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-center">
+              <button onClick={save} className="btn btn-primary w-full sm:w-auto">
                 Save changes
               </button>
               {msg && (
@@ -549,34 +542,34 @@ export default function ProfilePage() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4 h-24">
+          <div className="card h-24">
             <div className="text-gray-400 text-xs">Posts</div>
             <div className="mt-1 text-2xl text-white font-semibold">
               {statsLoading ? <Skeleton className="h-6 w-14" /> : (storyCount ?? "—")}
             </div>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4 h-24">
+          <div className="card h-24">
             <div className="text-gray-400 text-xs">Comments</div>
             <div className="mt-1 text-2xl text-white font-semibold">
               {statsLoading ? <Skeleton className="h-6 w-14" /> : (commentCount ?? "—")}
             </div>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4 h-24">
+          <div className="card h-24">
             <div className="text-gray-400 text-xs">Reads (session)</div>
             <div className="mt-1 text-2xl text-white font-semibold">—</div>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4 h-24">
+          <div className="card h-24">
             <div className="text-gray-400 text-xs">Reactions</div>
             <div className="mt-1 text-2xl text-white font-semibold">—</div>
           </div>
         </div>
         {countNote && <div className="mb-6 text-xs text-amber-300">{countNote}</div>}
 
-        {/* Lists (1 col on mobile, 2 cols on md+) */}
+        {/* Lists */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* My Stories */}
           <section>
-            <h2 className="text-lg font-semibold text-white mb-3">My Stories</h2>
+            <h2 className="text-lg font-semibold mb-3">My Stories</h2>
 
             {storiesLoading ? (
               <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
@@ -593,8 +586,8 @@ export default function ProfilePage() {
               <>
                 <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
                   {stories.map((s) => (
-                    <li key={s.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                      <h3 className="font-medium text-white">
+                    <li key={s.id} className="card p-3">
+                      <h3 className="font-medium">
                         <Link href={toStoryLink(s.id, s.slug)} className="hover:underline">
                           {s.title}
                         </Link>
@@ -622,7 +615,7 @@ export default function ProfilePage() {
 
           {/* My Recent Comments */}
           <section>
-            <h2 className="text-lg font-semibold text-white mb-3">My Recent Comments</h2>
+            <h2 className="text-lg font-semibold mb-3">My Recent Comments</h2>
 
             {commentsLoading ? (
               <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
@@ -636,7 +629,7 @@ export default function ProfilePage() {
               <>
                 <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
                   {comments.map((c) => (
-                    <li key={c.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <li key={c.id} className="card p-3">
                       <p className="text-gray-100 whitespace-pre-wrap break-words">
                         {c.body.length > 160 ? c.body.slice(0, 160) + "…" : c.body}
                       </p>
@@ -670,12 +663,14 @@ export default function ProfilePage() {
         <div className="flex flex-col sm:flex-row gap-2">
           <button
             onClick={signOutApp}
-            className="w-full sm:w-auto text-center text-red-400 underline px-4 py-2 rounded-md hover:bg-white/5"
+            className="w-full sm:w-auto text-center text-red-300 hover:text-red-200 underline px-4 py-2 rounded-md hover:bg-white/5 transition"
           >
             Sign out
           </button>
         </div>
+
+        <div className="page-bottom-spacer" />
       </div>
-    </main>
+    </section>
   );
 }

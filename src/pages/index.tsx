@@ -3,7 +3,6 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useLayoutEffect, useRef } from "react";
 import ChatBox from "../components/ChatBox";
 import { usePlayer } from "../context/PlayerContext";
 import { STATIONS } from "../data/stations";
@@ -23,43 +22,33 @@ const FEATURED_IDS = [
 
 export default function Home() {
   const { setShowUI } = usePlayer();
-  const heroRef = useRef<HTMLElement | null>(null);
-
-  useLayoutEffect(() => {
-    window.scrollTo(0, 0);
-    heroRef.current?.scrollIntoView({ block: "start", inline: "nearest" });
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-  }, []);
 
   return (
     <>
-      <section ref={heroRef} className="pt-20 sm:pt-24 pb-8 bg-darkbg text-lighttext">
-        <div className="mx-auto max-w-6xl px-4">
+      {/* HERO */}
+      <section className="section bg-darkbg text-lighttext scroll-mt-24 md:scroll-mt-28">
+        <div className="container-page">
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-blue-400 leading-snug">
+              <h1 className="page-title text-blue-400">
                 Welcome to Pinoy Tambayan Hub
               </h1>
-              <p className="mt-3 sm:mt-4 text-[15px] sm:text-base text-gray-300 max-w-prose">
+              <p className="mt-3 text-[15px] sm:text-base text-gray-300 max-w-prose">
                 Your daily dose of OPM hits, live radio, and tambayan vibes — all in one place.
               </p>
-              <div className="mt-5 flex gap-3">
+              <div className="mt-5 flex gap-3 flex-wrap">
                 <Link
                   href="/radio"
                   onClick={() => setShowUI(true)}
                   prefetch={false}
-                  className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-3 text-sm sm:text-base font-semibold text-white 
-                             shadow hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900 transition"
+                  className="btn btn-primary px-5 py-3 text-sm sm:text-base"
                 >
                   Start Listening
                 </Link>
                 <Link
                   href="/weather"
                   prefetch={false}
-                  className="inline-flex items-center justify-center rounded-lg bg-gray-800 px-5 py-3 text-sm sm:text-base font-semibold text-gray-100 
-                             border border-white/10 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                  className="btn btn-ghost px-5 py-3 text-sm sm:text-base"
                 >
                   Check Weather
                 </Link>
@@ -68,8 +57,7 @@ export default function Home() {
 
             {/* Quick links / cards */}
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              {/* UPDATED: Stories card */}
-              <Link href="/stories" className="card hover:bg-card transition">
+              <Link href="/stories" className="card card-hover">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-gradient-to-tr from-blue-500 to-cyan-400">
                     <span className="text-white text-xl">📖</span>
@@ -81,7 +69,7 @@ export default function Home() {
                 </div>
               </Link>
 
-              <Link href="/events" className="card hover:bg-card transition">
+              <Link href="/events" className="card card-hover">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-gradient-to-tr from-pink-500 to-purple-500">
                     <span className="text-white text-xl">📅</span>
@@ -93,7 +81,7 @@ export default function Home() {
                 </div>
               </Link>
 
-              <Link href="/radio" onClick={() => setShowUI(true)} className="card hover:bg-card transition">
+              <Link href="/radio" onClick={() => setShowUI(true)} className="card card-hover">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-gradient-to-tr from-green-500 to-emerald-400">
                     <span className="text-white text-xl">📻</span>
@@ -105,7 +93,7 @@ export default function Home() {
                 </div>
               </Link>
 
-              <Link href="/news" className="card hover:bg-card transition">
+              <Link href="/news" className="card card-hover">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-gradient-to-tr from-orange-500 to-yellow-400">
                     <span className="text-white text-xl">🗞️</span>
@@ -123,9 +111,9 @@ export default function Home() {
       </section>
 
       {/* FEATURED STATIONS */}
-      <section className="py-8 sm:py-10">
-        <div className="mx-auto w-full max-w-6xl px-4">
-          <h2 className="text-xl sm:text-2xl font-bold mb-3">Featured Stations</h2>
+      <section className="section">
+        <div className="container-page">
+          <h2 className="page-title mb-3">Featured Stations</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {FEATURED_IDS.map((id) => {
               const s = byId(id);
@@ -164,18 +152,15 @@ export default function Home() {
       </section>
 
       {/* QUICK WEATHER TEASER */}
-      <section className="py-6">
-        <div className="mx-auto w-full max-w-6xl px-4">
+      <section className="section">
+        <div className="container-page">
           <div className="rounded-xl bg-gray-800/70 p-5 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <div className="text-3xl">🌤️</div>
             <div className="flex-1">
               <h3 className="font-semibold text-lg">Weather at a glance</h3>
               <p className="text-gray-300 text-sm">See today’s forecast and alerts for your area.</p>
             </div>
-            <Link
-              href="/weather"
-              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
-            >
+            <Link href="/weather" className="btn btn-primary">
               Open Weather
             </Link>
           </div>
@@ -183,9 +168,9 @@ export default function Home() {
       </section>
 
       {/* COMMUNITY CHAT */}
-      <section className="py-8 sm:py-10 pb-24">
-        <div className="mx-auto w-full max-w-6xl px-4">
-          <h2 className="text-xl sm:text-2xl font-bold mb-3">Community Chat</h2>
+      <section className="section pb-24">
+        <div className="container-page">
+          <h2 className="page-title mb-3">Community Chat</h2>
           <div className="mx-auto w-full max-w-3xl min-h-0">
             <ChatBox />
           </div>
@@ -193,9 +178,9 @@ export default function Home() {
       </section>
 
       {/* FAQ */}
-      <section className="py-8 sm:py-10">
-        <div className="mx-auto w-full max-w-6xl px-4">
-          <h2 className="text-xl sm:text-2xl font-bold mb-3">FAQ</h2>
+      <section className="section">
+        <div className="container-page">
+          <h2 className="page-title mb-3">FAQ</h2>
           <div className="grid sm:grid-cols-2 gap-3">
             <details className="rounded-lg bg-gray-800/60 border border-white/10 p-4">
               <summary className="cursor-pointer font-semibold">Is Pinoy Tambayan Hub free?</summary>
@@ -226,8 +211,8 @@ export default function Home() {
       </section>
 
       {/* NEWSLETTER */}
-      <section className="py-8 sm:py-10">
-        <div className="mx-auto w-full max-w-6xl px-4">
+      <section className="section">
+        <div className="container-page">
           <div className="rounded-xl bg-gray-800/70 p-6 border border-white/10">
             <h3 className="text-lg font-semibold">Get updates</h3>
             <p className="text-gray-300 text-sm">Be the first to know about new stations and features.</p>
@@ -241,12 +226,9 @@ export default function Home() {
                 name="email"
                 required
                 placeholder="you@email.com"
-                className="flex-1 rounded-md bg-gray-700/90 text-white px-3 py-2 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
               />
-              <button
-                type="submit"
-                className="shrink-0 rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
+              <button type="submit" className="btn btn-primary">
                 Subscribe
               </button>
             </form>

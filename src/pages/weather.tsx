@@ -96,6 +96,7 @@ export default function WeatherPage() {
   const [search, setSearch] = useState("");
   const [city, setCity] = useState<City>(PH_CITIES[0]);
   const [geoErr, setGeoErr] = useState<string | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
 
   const [data, setData] = useState<Forecast | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -157,25 +158,51 @@ export default function WeatherPage() {
 
   const useMyLocation = () => {
     setGeoErr(null);
+    setGeoLoading(true);
+
+    // Quick HTTPS/permission hint
+    if (!window.isSecureContext) {
+      setGeoErr("Location requires HTTPS. Using approximate IP location.");
+    }
+
+    const finish = () => setGeoLoading(false);
+
+    const doIP = async () => {
+      const c = await ipFallback();
+      if (c) setCity(c);
+      finish();
+    };
+
     if (!navigator.geolocation) {
-      ipFallback().then((c) => c && setCity(c));
+      doIP();
       return;
     }
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const named =
-          (await reverseGeocode(pos.coords.latitude, pos.coords.longitude)) ||
-          (await ipFallback()) || {
-            name: "Your location",
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude,
-          };
-        setCity(named);
+        try {
+          const named =
+            (await reverseGeocode(pos.coords.latitude, pos.coords.longitude)) ||
+            (await ipFallback()) || {
+              name: "Your location",
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+            };
+          setCity(named);
+        } catch {
+          // swallow
+        } finally {
+          finish();
+        }
       },
-      async () => {
-        setGeoErr("Precise location blocked. Using approximate location.");
-        const c = await ipFallback();
-        if (c) setCity(c);
+      async (err) => {
+        // Permission denied, timeout, or other errors
+        setGeoErr(
+          err.code === err.PERMISSION_DENIED
+            ? "Precise location blocked. Using approximate location."
+            : "Couldn’t get precise location. Using approximate location."
+        );
+        await doIP();
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
@@ -200,9 +227,10 @@ export default function WeatherPage() {
   }, [data]);
 
   return (
-    <div className="pt-20 sm:pt-24 min-h-screen bg-darkbg text-lighttext overflow-x-hidden">
-      <div className="w-full max-w-6xl mx-auto px-4 md:px-6">
-        <h1 className="text-3xl font-bold mb-2">Weather</h1>
+    <section className="section">
+      <div className="container-page">
+        {/* Header */}
+        <h1 className="page-title">Weather</h1>
         <p className="text-gray-400 mb-5">
           7-day forecast for the Philippines. Timezone: Asia/Manila.
         </p>
@@ -298,22 +326,32 @@ export default function WeatherPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="w-full rounded-md bg-gray-700/80 text-white placeholder-gray-400 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input"
             />
           </div>
 
           <div className="flex gap-2 w-full md:w-auto">
             <button
               onClick={handleSearch}
-              className="flex-1 md:flex-none px-4 py-3 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition"
+              className="btn btn-primary w-full md:w-auto"
             >
               Search
             </button>
             <button
               onClick={useMyLocation}
-              className="flex-1 md:flex-none px-4 py-3 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-200 transition"
+              disabled={geoLoading}
+              className="btn btn-ghost w-full md:w-auto disabled:opacity-60"
+              aria-busy={geoLoading}
+              aria-live="polite"
             >
-              Use my location
+              {geoLoading ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-transparent animate-spin" />
+                  Locating…
+                </span>
+              ) : (
+                "Use my location"
+              )}
             </button>
           </div>
         </div>
@@ -400,8 +438,8 @@ export default function WeatherPage() {
           )}
         </div>
 
-        <div className="h-8" />
+        <div className="page-bottom-spacer" />
       </div>
-    </div>
+    </section>
   );
 }

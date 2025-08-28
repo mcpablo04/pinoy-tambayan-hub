@@ -20,7 +20,6 @@ export default function StationDetail({ station }: { station: StationEx }) {
 
   const related = useMemo(() => {
     const key = (station.genre ?? "").toLowerCase();
-    // If genre is missing, fall back to “same first word” match; otherwise show 8 random others.
     const pool = STATIONS.filter((s) => s.id !== station.id);
     const genreMatches = pool.filter(
       (s) => (s as StationEx).genre?.toLowerCase() === key
@@ -50,24 +49,25 @@ export default function StationDetail({ station }: { station: StationEx }) {
   };
 
   return (
-    <div className="pt-20 bg-darkbg text-lighttext min-h-screen">
+    <section className="section">
       <Head>
         <title>{title}</title>
         <meta name="description" content={desc} />
         <script
           type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </Head>
 
-      <div className="max-w-6xl mx-auto px-4 md:px-6">
-        {/* Breadcrumb */}
-        <nav className="text-sm text-gray-400 mb-3">
+      <div className="container-page max-w-6xl">
+        {/* Breadcrumb (scrollable on tiny screens) */}
+        <nav className="-mx-4 px-4 overflow-x-auto no-scrollbar text-sm text-gray-400 mb-3">
           <Link href="/radio" className="hover:text-blue-400">
             Radio
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-gray-300">{station.name}</span>
+          <span className="text-gray-300 whitespace-nowrap">{station.name}</span>
         </nav>
 
         {/* Header */}
@@ -75,14 +75,13 @@ export default function StationDetail({ station }: { station: StationEx }) {
           <img
             src={station.logo}
             alt={station.name}
-            className="w-24 h-24 rounded-lg object-contain bg-gray-800 p-2 shrink-0"
+            loading="lazy"
+            className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-contain bg-gray-800 p-2 shrink-0"
           />
 
-          {/* min-w-0 ONLY here so long names can truncate without pushing layout */}
+          {/* min-w-0 so long names can truncate */}
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold truncate">
-              {station.name}
-            </h1>
+            <h1 className="page-title mb-0 truncate">{station.name}</h1>
 
             <p className="text-gray-400 mt-1 truncate">
               {station.genre ? `${station.genre} • ` : ""}
@@ -107,7 +106,7 @@ export default function StationDetail({ station }: { station: StationEx }) {
             <div className="mt-4 flex gap-2">
               <button
                 onClick={playInFloating}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-500"
+                className="btn btn-primary w-full sm:w-auto h-11"
               >
                 ▶ Play in Floating Player
               </button>
@@ -147,13 +146,14 @@ export default function StationDetail({ station }: { station: StationEx }) {
             <div className="card">
               <h3 className="text-lg font-semibold mb-3">Related Stations</h3>
 
-              {/* Use a tight grid on mobile, list on desktop */}
+              {/* Tight grid on mobile, list on desktop */}
               <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-1 gap-3">
                 {related.map((s) => (
-                  <li key={s.id} className="flex items-center gap-3 min-w-0">
+                  <li key={s.id} className="flex items-center gap-3 min-w-0 py-1.5">
                     <img
                       src={s.logo}
                       alt={s.name}
+                      loading="lazy"
                       className="w-10 h-10 rounded bg-gray-800 p-1 shrink-0"
                     />
                     <div className="flex-1 min-w-0">
@@ -170,24 +170,22 @@ export default function StationDetail({ station }: { station: StationEx }) {
                   </li>
                 ))}
                 {!related.length && (
-                  <li className="text-sm text-gray-400">
-                    No related stations.
-                  </li>
+                  <li className="text-sm text-gray-400">No related stations.</li>
                 )}
               </ul>
             </div>
 
             <div className="card text-center">
               <div className="text-xs text-gray-500 mb-2">Advertisement</div>
-              <div className="bg-gray-800 rounded h-[250px]" />
+              <div className="bg-gray-800 rounded aspect-[16/9] sm:aspect-[1/1.25]" />
             </div>
           </aside>
         </section>
 
-        {/* bottom spacer so the floating player doesn't overlap last card */}
-        <div className="h-8" />
+        {/* keep breathing room for floating player */}
+        <div className="page-bottom-spacer" />
       </div>
-    </div>
+    </section>
   );
 }
 

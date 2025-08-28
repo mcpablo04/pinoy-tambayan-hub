@@ -24,15 +24,14 @@ export default function NavBar() {
   const handleLinkClick = () => setOpen(false);
   const photo = profile?.photoURL || user?.photoURL || null;
   const displayName = profile?.displayName || user?.displayName || "Profile";
-
   const isActive = (href: string) => router.pathname === href;
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800">
       <div className="max-w-6xl mx-auto flex items-center justify-between p-4">
-        {/* Logo */}
         <Link
           href="/"
+          scroll
           className="flex items-center gap-3 text-white font-bold"
           onClick={handleLinkClick}
           aria-label="Pinoy Tambayan Hub"
@@ -48,12 +47,12 @@ export default function NavBar() {
           <span className="text-xl md:text-2xl">Pinoy Tambayan Hub</span>
         </Link>
 
-        {/* Desktop menu */}
         <nav className="hidden md:flex items-center space-x-1">
           {LINKS.map(({ label, href }) => (
             <Link
               key={href}
               href={href}
+              scroll
               onClick={handleLinkClick}
               className={`px-3 py-1 rounded transition ${
                 isActive(href)
@@ -65,11 +64,11 @@ export default function NavBar() {
             </Link>
           ))}
 
-          {/* Auth area */}
           {user ? (
             <div className="flex items-center gap-3 pl-3 ml-2 border-l border-gray-700">
               <Link
                 href="/profile"
+                scroll
                 className="flex items-center gap-2 hover:opacity-90"
                 onClick={handleLinkClick}
               >
@@ -95,6 +94,7 @@ export default function NavBar() {
           ) : (
             <Link
               href="/login"
+              scroll
               className="ml-2 px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-500"
             >
               Login / Register
@@ -102,7 +102,6 @@ export default function NavBar() {
           )}
         </nav>
 
-        {/* Mobile toggle */}
         <button
           className="md:hidden text-gray-200 text-2xl"
           onClick={() => setOpen((o) => !o)}
@@ -112,14 +111,13 @@ export default function NavBar() {
         </button>
       </div>
 
-      {/* Mobile dropdown */}
       {open && (
         <div className="md:hidden bg-gray-800 border-t border-gray-700">
-          {/* Mobile auth header */}
           <div className="px-4 py-3 flex items-center justify-between border-b border-gray-700">
             {user ? (
               <Link
                 href="/profile"
+                scroll
                 className="flex items-center gap-3"
                 onClick={handleLinkClick}
               >
@@ -135,11 +133,7 @@ export default function NavBar() {
                 <span className="text-gray-200">{displayName}</span>
               </Link>
             ) : (
-              <Link
-                href="/login"
-                className="text-blue-400"
-                onClick={handleLinkClick}
-              >
+              <Link href="/login" scroll className="text-blue-400" onClick={handleLinkClick}>
                 Login / Register
               </Link>
             )}
@@ -151,15 +145,13 @@ export default function NavBar() {
             )}
           </div>
 
-          {/* Mobile links */}
           {LINKS.map(({ label, href }) => (
             <Link
               key={href}
               href={href}
+              scroll
               className={`block px-4 py-3 transition ${
-                isActive(href)
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-200 hover:bg-gray-700"
+                isActive(href) ? "bg-gray-700 text-white" : "text-gray-200 hover:bg-gray-700"
               }`}
               onClick={handleLinkClick}
             >

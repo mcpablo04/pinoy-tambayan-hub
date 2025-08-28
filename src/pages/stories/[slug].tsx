@@ -3,7 +3,7 @@
 
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   doc,
   getDoc,
@@ -35,9 +35,32 @@ const getIdFromSlug = (slugOrId: string) => {
 export default function StoryPage() {
   const router = useRouter();
   const { slug } = router.query as { slug?: string };
+
   const [story, setStory] = useState<StoryDoc | null>(null);
   const [id, setId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // anchor to avoid being hidden under the fixed navbar
+  const topRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToTopSafe = useCallback(() => {
+    const navH = window.matchMedia("(min-width: 768px)").matches ? 96 : 80; // pt-24 / pt-20
+    const y =
+      (topRef.current?.getBoundingClientRect().top ?? 0) +
+      window.scrollY -
+      navH -
+      6;
+    window.scrollTo({ top: Math.max(0, y), left: 0, behavior: "auto" });
+  }, []);
+
+  // force top on mount + whenever slug changes
+  useEffect(() => {
+    if (!slug) return;
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+    requestAnimationFrame(scrollToTopSafe);
+  }, [slug, scrollToTopSafe]);
 
   useEffect(() => {
     if (!slug) return;
@@ -45,18 +68,21 @@ export default function StoryPage() {
     setId(_id);
 
     (async () => {
+      setLoading(true);
       const ref = doc(db, "stories", _id);
       const snap = await getDoc(ref);
+
       if (!snap.exists()) {
         setStory(null);
         setLoading(false);
         return;
       }
+
       const data = snap.data() as StoryDoc;
       setStory(data);
       setLoading(false);
 
-      // Count a read once per session (non-blocking)
+      // Count a read once per session (may be blocked by your rules if counts isn't allowed)
       try {
         const key = `read:${_id}`;
         if (!sessionStorage.getItem(key)) {
@@ -66,13 +92,15 @@ export default function StoryPage() {
       } catch {
         /* ignore */
       }
+
+      requestAnimationFrame(scrollToTopSafe);
     })();
-  }, [slug]);
+  }, [slug, scrollToTopSafe]);
 
   if (loading) {
     return (
-      <main className="pt-20 sm:pt-24 pb-16">
-        <div className="mx-auto max-w-3xl px-4">
+      <section className="section">
+        <article className="container-page max-w-3xl">
           <div className="h-4 w-24 rounded bg-gray-700/50 mb-4 animate-pulse" />
           <div className="h-6 w-3/4 rounded bg-gray-700/60 mb-3 animate-pulse" />
           <div className="h-6 w-1/2 rounded bg-gray-700/60 mb-6 animate-pulse" />
@@ -81,26 +109,28 @@ export default function StoryPage() {
               <div key={i} className="h-4 w-full rounded bg-gray-800/60 animate-pulse" />
             ))}
           </div>
-        </div>
-      </main>
+        </article>
+      </section>
     );
   }
 
   if (!story || !id) {
     return (
-      <main className="pt-20 sm:pt-24 pb-16">
-        <div className="mx-auto max-w-3xl px-4 text-gray-300">
+      <section className="section">
+        <article className="container-page max-w-3xl text-gray-300">
           Story not found.
-        </div>
-      </main>
+        </article>
+      </section>
     );
   }
 
   return (
-    <main className="pt-20 sm:pt-24 pb-[110px] sm:pb-24"> 
-      {/* pb includes a bit of safe area so bottom UI doesn’t crowd on phones */}
-      <article className="mx-auto max-w-3xl px-4">
-        {/* Back link: bigger tap target on mobile */}
+    <section className="section">
+      <article className="container-page max-w-3xl">
+        {/* anchor so we can scroll with header offset */}
+        <div ref={topRef} style={{ scrollMarginTop: "110px" }} />
+
+        {/* Back link */}
         <div className="mb-4 sm:mb-6">
           <Link
             href="/stories"
@@ -122,17 +152,14 @@ export default function StoryPage() {
           {story.authorHandle ? (
             <>
               <span className="text-gray-500">·</span>
-              <Link
-                href={`/u/${story.authorHandle}`}
-                className="text-blue-400 hover:underline"
-              >
+              <Link href={`/u/${story.authorHandle}`} className="text-blue-400 hover:underline">
                 @{story.authorHandle}
               </Link>
             </>
           ) : null}
         </div>
 
-        {/* Tags: horizontal scroll on very small screens to avoid wrapping tall stacks */}
+        {/* Tags */}
         {story.tags && story.tags.length > 0 && (
           <div className="-mx-4 px-4 mt-3">
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
@@ -148,17 +175,16 @@ export default function StoryPage() {
           </div>
         )}
 
-        {/* Content: readable measure & comfy line-height on mobile */}
+        {/* Content */}
         <div className="mt-6 sm:mt-8">
-          <div className="prose prose-invert max-w-none">
-            <p className="whitespace-pre-wrap leading-relaxed text-[15px] sm:text-base text-gray-200">
-              {story.content.body}
-            </p>
-          </div>
+          <p className="whitespace-pre-wrap leading-relaxed text-[15px] sm:text-base text-gray-200">
+            {story.content.body}
+          </p>
         </div>
 
-        {/* Reactions: stick to bottom on mobile for easy access */}
+        {/* Reactions */}
         <div className="mt-6 sm:mt-8">
+          {/* Mobile sticky */}
           <div className="block sm:hidden fixed inset-x-0 bottom-0 z-40">
             <div className="mx-auto max-w-3xl px-4 pb-[calc(env(safe-area-inset-bottom)+10px)]">
               <div className="rounded-t-xl bg-gray-900/95 border-t border-white/10 backdrop-blur-sm p-3">
@@ -166,18 +192,20 @@ export default function StoryPage() {
               </div>
             </div>
           </div>
-
-          {/* Desktop / tablet inline bar */}
+          {/* Desktop inline */}
           <div className="hidden sm:block">
             <ReactionBar storyId={id} />
           </div>
         </div>
 
-        {/* Comments */}
+        {/* Comments – live first 5 + Load more */}
         <div className="mt-6 sm:mt-8">
-          <Comments storyId={id} />
+          <Comments storyId={id} initialBatch={5} />
         </div>
+
+        {/* Spacer so the fixed mobile bar doesn't cover the bottom */}
+        <div className="pb-[110px] sm:pb-0" />
       </article>
-    </main>
+    </section>
   );
 }

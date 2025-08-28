@@ -1,22 +1,104 @@
 // src/pages/terms.tsx
-"use client";
+import Link from "next/link";
 
 export default function TermsPage() {
   return (
-    <div className="max-w-3xl mx-auto py-12">
-      <h1 className="text-3xl font-bold mb-6">Terms and Conditions</h1>
-      <p className="mb-4">
-        By using Pinoy Tambayan Hub, you agree to comply with these terms.
-      </p>
-      <ul className="list-disc list-inside space-y-2">
-        <li>Respect other users and avoid abusive language.</li>
-        <li>Do not share inappropriate or harmful content.</li>
-        <li>We reserve the right to moderate and remove content at our discretion.</li>
-        <li>Your use of this site means you accept that we may update these terms anytime.</li>
-      </ul>
-      <p className="mt-6 text-sm text-gray-400">
-        Last updated: {new Date().toLocaleDateString()}
-      </p>
-    </div>
+    <section className="section">
+      <div className="container-page max-w-3xl">
+        <h1 className="page-title">📜 Terms of Service</h1>
+        <p className="text-gray-400 mb-4">
+          Last updated: <span className="text-gray-300">March 2025</span>
+        </p>
+
+        {/* Using the Site */}
+        <div className="card mb-4">
+          <h2 className="font-semibold text-white mb-2">1) Using Pinoy Tambayan Hub</h2>
+          <p className="text-gray-300">
+            By accessing or using this site, you agree to these Terms and our Privacy Policy.
+            If you do not agree, please discontinue use.
+          </p>
+        </div>
+
+        {/* User Content */}
+        <div className="card mb-4">
+          <h2 className="font-semibold text-white mb-2">2) Your Content</h2>
+          <ul className="list-disc pl-5 space-y-1 text-gray-300">
+            <li>You are responsible for content you post (stories, comments, reactions).</li>
+            <li>
+              You grant us a worldwide, non-exclusive, royalty-free license to host, display, and
+              distribute your content on the service.
+            </li>
+            <li>
+              You confirm you have the rights to post it and that it does not infringe any third-party rights.
+            </li>
+          </ul>
+        </div>
+
+        {/* Community Rules */}
+        <div className="card mb-4">
+          <h2 className="font-semibold text-white mb-2">3) Community Rules</h2>
+          <ul className="list-disc pl-5 space-y-1 text-gray-300">
+            <li>Be respectful; no harassment, hate speech, or threats.</li>
+            <li>No spam, scams, or illegal content/activity.</li>
+            <li>No explicit, pornographic, or excessively violent material.</li>
+            <li>We may moderate, edit, or remove content at our discretion.</li>
+          </ul>
+        </div>
+
+        {/* Accounts & Security */}
+        <div className="card mb-4">
+          <h2 className="font-semibold text-white mb-2">4) Accounts & Security</h2>
+          <ul className="list-disc pl-5 space-y-1 text-gray-300">
+            <li>Keep your login credentials safe; you’re responsible for activity on your account.</li>
+            <li>
+              We may suspend or terminate accounts that violate these Terms or pose a risk to others.
+            </li>
+          </ul>
+        </div>
+
+        {/* Intellectual Property */}
+        <div className="card mb-4">
+          <h2 className="font-semibold text-white mb-2">5) Intellectual Property</h2>
+          <p className="text-gray-300">
+            The Pinoy Tambayan Hub name, logo, UI, and code are protected. Do not copy, reverse engineer,
+            or misuse our assets except as permitted by law.
+          </p>
+        </div>
+
+        {/* Disclaimers & Liability */}
+        <div className="card mb-4">
+          <h2 className="font-semibold text-white mb-2">6) Disclaimers & Limitation of Liability</h2>
+          <ul className="list-disc pl-5 space-y-1 text-gray-300">
+            <li>The service is provided “as is” without warranties of any kind.</li>
+            <li>
+              We are not liable for indirect or consequential damages, or for third-party content and links.
+            </li>
+          </ul>
+        </div>
+
+        {/* Changes */}
+        <div className="card mb-4">
+          <h2 className="font-semibold text-white mb-2">7) Changes to These Terms</h2>
+          <p className="text-gray-300">
+            We may update these Terms from time to time. Continued use after changes means you accept
+            the updated Terms.
+          </p>
+        </div>
+
+        {/* Contact */}
+        <div className="card">
+          <h2 className="font-semibold text-white mb-2">Contact</h2>
+          <p className="text-gray-300">
+            Questions? Reach us via{" "}
+            <Link href="/contact" className="text-blue-400 hover:underline">
+              Contact
+            </Link>
+            .
+          </p>
+        </div>
+
+        <div className="page-bottom-spacer" />
+      </div>
+    </section>
   );
 }
