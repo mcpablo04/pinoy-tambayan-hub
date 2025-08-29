@@ -1,12 +1,15 @@
 // src/pages/login.tsx
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import Head from "next/head";
+import { useEffect, useState, FormEvent, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { useAuth } from "../context/AuthContext";
 import { auth } from "../firebase/clientApp";
+
+const SITE_URL = "https://pinoytambayanhub.com"; // update if different
 
 const friendly = (code: string) => {
   switch (code) {
@@ -88,194 +91,231 @@ export default function LoginPage() {
     }
   };
 
+  // ---- SEO bits ----
+  const canonical = `${SITE_URL}/login`;
+  const metaTitle = useMemo(
+    () => (mode === "login" ? "Sign in | Pinoy Tambayan Hub" : "Create account | Pinoy Tambayan Hub"),
+    [mode]
+  );
+  const metaDesc =
+    mode === "login"
+      ? "Sign in to Pinoy Tambayan Hub using Google or your email to join the community."
+      : "Create your Pinoy Tambayan Hub account using email or sign in with Google.";
+
   return (
-    <section className="section">
-      <div className="container-page max-w-md">
-        {/* Heading + tabs */}
-        <div className="flex items-center justify-between mb-3">
-          <h1 className="page-title mb-0">
-            {mode === "login" ? "Sign in" : "Create account"}
-          </h1>
-          {/* Quick home link for small screens */}
-          <Link href="/" className="text-sm text-blue-400 hover:underline">
-            ← Home
-          </Link>
-        </div>
+    <>
+      {/* SEO */}
+      <Head>
+        <title>{metaTitle}</title>
+        <meta name="description" content={metaDesc} />
+        <link rel="canonical" href={canonical} />
+        {/* Auth pages generally shouldn't be indexed */}
+        <meta name="robots" content="noindex,nofollow" />
 
-        {/* Segmented control (very clickable) */}
-        <div className="mb-5 inline-flex rounded-lg border border-white/10 overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setMode("login")}
-            className={`px-4 py-2 text-sm font-medium transition ${
-              mode === "login"
-                ? "bg-blue-600 text-white"
-                : "bg-white/5 text-gray-200 hover:bg-white/10"
-            }`}
-          >
-            Sign in
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("register")}
-            className={`px-4 py-2 text-sm font-medium transition border-l border-white/10 ${
-              mode === "register"
-                ? "bg-blue-600 text-white"
-                : "bg-white/5 text-gray-200 hover:bg-white/10"
-            }`}
-          >
-            Register
-          </button>
-        </div>
+        <meta property="og:title" content={metaTitle} />
+        <meta property="og:description" content={metaDesc} />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={canonical} />
+        <meta property="og:image" content="/brand/og-cover.png" />
 
-        {/* Little subtitle */}
-        <p className="text-gray-400 mb-4 text-sm">
-          Continue with Google or use your email.
-        </p>
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={metaTitle} />
+        <meta name="twitter:description" content={metaDesc} />
+        <meta name="twitter:image" content="/brand/og-cover.png" />
+      </Head>
 
-        {/* Alerts */}
-        {err && (
-          <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2">
-            {err}
+      <section className="section">
+        <div className="container-page max-w-md">
+          {/* Heading + tabs */}
+          <div className="flex items-center justify-between mb-3">
+            <h1 className="page-title mb-0">
+              {mode === "login" ? "Sign in" : "Create account"}
+            </h1>
+            {/* Quick home link for small screens */}
+            <Link href="/" className="text-sm text-blue-400 hover:underline">
+              ← Home
+            </Link>
           </div>
-        )}
-        {msg && (
-          <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 px-3 py-2">
-            {msg}
+
+          {/* Segmented control (very clickable) */}
+          <div className="mb-5 inline-flex rounded-lg border border-white/10 overflow-hidden" role="tablist" aria-label="Auth mode">
+            <button
+              type="button"
+              onClick={() => setMode("login")}
+              role="tab"
+              aria-selected={mode === "login"}
+              className={`px-4 py-2 text-sm font-medium transition ${
+                mode === "login"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white/5 text-gray-200 hover:bg-white/10"
+              }`}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("register")}
+              role="tab"
+              aria-selected={mode === "register"}
+              className={`px-4 py-2 text-sm font-medium transition border-l border-white/10 ${
+                mode === "register"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white/5 text-gray-200 hover:bg-white/10"
+              }`}
+            >
+              Register
+            </button>
           </div>
-        )}
 
-        {/* Card */}
-        <div className="card">
-          {/* Email form */}
-          <form onSubmit={onSubmitEmail} className="space-y-3">
-            {mode === "register" && (
-              <div>
-                <label htmlFor="displayName" className="sr-only">Display name</label>
-                <input
-                  id="displayName"
-                  className="input"
-                  placeholder="Display name (optional)"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                />
-              </div>
-            )}
+          {/* Little subtitle */}
+          <p className="text-gray-400 mb-4 text-sm">
+            Continue with Google or use your email.
+          </p>
 
-            <div>
-              <label htmlFor="email" className="sr-only">Email</label>
-              <input
-                id="email"
-                className="input"
-                placeholder="Email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+          {/* Alerts */}
+          {err && (
+            <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2" role="alert" aria-live="assertive">
+              {err}
             </div>
+          )}
+          {msg && (
+            <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 px-3 py-2" role="status" aria-live="polite">
+              {msg}
+            </div>
+          )}
 
-            <div>
-              <label htmlFor="password" className="sr-only">Password</label>
-              <div className="relative">
+          {/* Card */}
+          <div className="card">
+            {/* Email form */}
+            <form onSubmit={onSubmitEmail} className="space-y-3" noValidate>
+              {mode === "register" && (
+                <div>
+                  <label htmlFor="displayName" className="sr-only">Display name</label>
+                  <input
+                    id="displayName"
+                    className="input"
+                    placeholder="Display name (optional)"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="email" className="sr-only">Email</label>
                 <input
-                  id="password"
-                  className="input pr-12"
-                  placeholder="Password"
-                  type={showPass ? "text" : "password"}
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
-                  value={pass}
-                  onChange={(e) => setPass(e.target.value)}
+                  id="email"
+                  className="input"
+                  placeholder="Email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                 />
+              </div>
+
+              <div>
+                <label htmlFor="password" className="sr-only">Password</label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    className="input pr-12"
+                    placeholder="Password"
+                    type={showPass ? "text" : "password"}
+                    autoComplete={mode === "login" ? "current-password" : "new-password"}
+                    value={pass}
+                    onChange={(e) => setPass(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass((s) => !s)}
+                    className="absolute inset-y-0 right-2 my-auto h-8 px-2 rounded text-xs text-gray-300 hover:text-white hover:bg-white/10"
+                    aria-label={showPass ? "Hide password" : "Show password"}
+                  >
+                    {showPass ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn btn-primary w-full"
+              >
+                {loading
+                  ? "Please wait…"
+                  : mode === "login"
+                  ? "Sign in with Email"
+                  : "Register with Email"}
+              </button>
+
+              {mode === "login" && (
                 <button
                   type="button"
-                  onClick={() => setShowPass((s) => !s)}
-                  className="absolute inset-y-0 right-2 my-auto h-8 px-2 rounded text-xs text-gray-300 hover:text-white hover:bg-white/10"
-                  aria-label={showPass ? "Hide password" : "Show password"}
+                  onClick={resetPassword}
+                  className="text-sm text-blue-400 hover:underline"
                 >
-                  {showPass ? "Hide" : "Show"}
+                  Forgot password?
                 </button>
-              </div>
+              )}
+            </form>
+
+            {/* Divider */}
+            <div className="flex items-center my-5 gap-3 text-gray-500">
+              <div className="flex-1 h-px bg-gray-700" />
+              <span className="text-xs">OR</span>
+              <div className="flex-1 h-px bg-gray-700" />
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-primary w-full"
-            >
-              {loading
-                ? "Please wait…"
-                : mode === "login"
-                ? "Sign in with Email"
-                : "Register with Email"}
-            </button>
-
-            {mode === "login" && (
+            {/* Socials */}
+            <div className="space-y-2">
               <button
-                type="button"
-                onClick={resetPassword}
-                className="text-sm text-blue-400 hover:underline"
+                onClick={signInGoogle}
+                disabled={loading}
+                className="w-full rounded-lg bg-white text-gray-900 px-4 py-3 font-semibold hover:opacity-90 transition disabled:opacity-60"
               >
-                Forgot password?
+                Continue with Google
               </button>
+            </div>
+          </div>
+
+          {/* Bottom links (clickable) */}
+          <div className="mt-4 text-sm text-gray-400">
+            {mode === "login" ? (
+              <>
+                Don’t have an account?{" "}
+                <button
+                  className="text-blue-400 hover:underline"
+                  onClick={() => setMode("register")}
+                >
+                  Register
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button
+                  className="text-blue-400 hover:underline"
+                  onClick={() => setMode("login")}
+                >
+                  Sign in
+                </button>
+              </>
             )}
-          </form>
-
-          {/* Divider */}
-          <div className="flex items-center my-5 gap-3 text-gray-500">
-            <div className="flex-1 h-px bg-gray-700" />
-            <span className="text-xs">OR</span>
-            <div className="flex-1 h-px bg-gray-700" />
           </div>
 
-          {/* Socials */}
-          <div className="space-y-2">
-            <button
-              onClick={signInGoogle}
-              disabled={loading}
-              className="w-full rounded-lg bg-white text-gray-900 px-4 py-3 font-semibold hover:opacity-90 transition disabled:opacity-60"
-            >
-              Continue with Google
-            </button>
-          </div>
+          <p className="text-xs text-gray-500 mt-4">
+            By continuing, you agree to our{" "}
+            <Link href="/terms" className="text-blue-400 hover:underline">Terms</Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="text-blue-400 hover:underline">Privacy Policy</Link>.
+          </p>
+
+          <div className="page-bottom-spacer" />
         </div>
-
-        {/* Bottom links (clickable) */}
-        <div className="mt-4 text-sm text-gray-400">
-          {mode === "login" ? (
-            <>
-              Don’t have an account?{" "}
-              <button
-                className="text-blue-400 hover:underline"
-                onClick={() => setMode("register")}
-              >
-                Register
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
-              <button
-                className="text-blue-400 hover:underline"
-                onClick={() => setMode("login")}
-              >
-                Sign in
-              </button>
-            </>
-          )}
-        </div>
-
-        <p className="text-xs text-gray-500 mt-4">
-          By continuing, you agree to our{" "}
-          <Link href="/terms" className="text-blue-400 hover:underline">Terms</Link>{" "}
-          and{" "}
-          <Link href="/privacy" className="text-blue-400 hover:underline">Privacy Policy</Link>.
-        </p>
-
-        <div className="page-bottom-spacer" />
-      </div>
-    </section>
+      </section>
+    </>
   );
 }

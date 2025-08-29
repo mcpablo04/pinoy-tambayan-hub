@@ -1,11 +1,15 @@
 // src/pages/_app.tsx
 import "../styles/globals.css";
 import type { AppProps } from "next/app";
+import Script from "next/script";
+import Head from "next/head";
+
 import NavBar from "../components/NavBar";
 import Footer from "../components/Footer";
 import GlobalPlayer from "../components/GlobalPlayer";
 import { PlayerProvider } from "../context/PlayerContext";
 import { AuthProvider } from "../context/AuthContext";
+
 import { useEffect } from "react";
 import { useRouter } from "next/router";
 
@@ -77,6 +81,27 @@ export default function MyApp({ Component, pageProps }: AppProps) {
   return (
     <AuthProvider>
       <PlayerProvider>
+        {/* Head here so viewport is NOT in _document (silences Next.js warning) */}
+        <Head>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          {/* Optional defaults; individual pages can override with next/head */}
+          <title>Pinoy Tambayan Hub</title>
+          <meta
+            name="description"
+            content="Pinoy Tambayan Hub – your daily OPM hits, live radio, weather, events, news, and tambayan vibes in one place."
+          />
+          <link rel="canonical" href="https://pinoytambayanhub.com/" />
+        </Head>
+
+        {/* Google AdSense (replace client ID) */}
+        <Script
+          id="adsense"
+          async
+          strategy="afterInteractive"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"
+          crossOrigin="anonymous"
+        />
+
         <div className="app-shell">
           <NavBar />
           <ScrollReset />

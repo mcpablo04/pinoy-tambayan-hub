@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import Head from "next/head";
 import ChatBox from "../components/ChatBox";
 import { usePlayer } from "../context/PlayerContext";
 import { STATIONS } from "../data/stations";
@@ -25,6 +26,52 @@ export default function Home() {
 
   return (
     <>
+      {/* SEO */}
+      <Head>
+        <title>Pinoy Tambayan Hub — OPM Radio, Weather, Events & News</title>
+        <meta
+          name="description"
+          content="Listen to Pinoy radio online, check PH weather, browse events, and hang out with the community. Pinoy Tambayan Hub brings OPM hits and tambayan vibes in one place."
+        />
+        <link rel="canonical" href="https://pinoytambayanhub.com/" />
+
+        {/* Social previews (overrides the defaults in _document) */}
+        <meta property="og:title" content="Pinoy Tambayan Hub — OPM Radio, Weather, Events & News" />
+        <meta
+          property="og:description"
+          content="Listen to Pinoy radio online, check PH weather, browse events, and hang out with the community."
+        />
+        <meta property="og:image" content="/brand/og-cover.png" />
+        <meta property="og:url" content="https://pinoytambayanhub.com/" />
+        <meta property="og:type" content="website" />
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Pinoy Tambayan Hub — OPM Radio, Weather, Events & News" />
+        <meta
+          name="twitter:description"
+          content="Listen to Pinoy radio, check weather, and browse events — all in one place."
+        />
+        <meta name="twitter:image" content="/brand/og-cover.png" />
+
+        {/* Optional JSON-LD (basic) */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              name: "Pinoy Tambayan Hub",
+              url: "https://pinoytambayanhub.com/",
+              potentialAction: {
+                "@type": "SearchAction",
+                target: "https://pinoytambayanhub.com/radio?q={search_term_string}",
+                "query-input": "required name=search_term_string",
+              },
+            }),
+          }}
+        />
+      </Head>
+
       {/* HERO */}
       <section className="section bg-darkbg text-lighttext scroll-mt-24 md:scroll-mt-28">
         <div className="container-page">
@@ -105,7 +152,6 @@ export default function Home() {
                 </div>
               </Link>
             </div>
-
           </div>
         </div>
       </section>

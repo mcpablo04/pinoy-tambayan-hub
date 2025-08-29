@@ -1,9 +1,10 @@
-// /src/pages/contact.tsx
+// src/pages/contact.tsx
 "use client";
 
+import Head from "next/head";
 import { FormEvent, useState } from "react";
 
-export default function Contact() {
+export default function ContactPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
@@ -38,66 +39,106 @@ export default function Contact() {
   };
 
   return (
-    <section className="section">
-      <div className="container-page max-w-md">
-        <h2 className="page-title">📬 Contact Us</h2>
+    <>
+      {/* SEO */}
+      <Head>
+        <title>Contact Us | Pinoy Tambayan Hub</title>
+        <meta
+          name="description"
+          content="Get in touch with Pinoy Tambayan Hub. Send us your feedback, questions, or requests via our contact form."
+        />
+        <link rel="canonical" href="https://pinoytambayanhub.com/contact" />
+        <meta property="og:title" content="Contact Us | Pinoy Tambayan Hub" />
+        <meta
+          property="og:description"
+          content="Get in touch with Pinoy Tambayan Hub. Send us your feedback, questions, or requests."
+        />
+        <meta property="og:image" content="/brand/og-cover.png" />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:card" content="summary_large_image" />
+      </Head>
 
-        {ok && (
-          <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 text-green-200 px-3 py-2">
-            Thanks! Your message was sent.
-          </div>
-        )}
-        {err && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2">
-            {err}
-          </div>
-        )}
+      <section className="section">
+        <div className="container-page max-w-md">
+          <h1 className="page-title">📬 Contact Us</h1>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          {/* Honeypot field (hidden) */}
-          <input
-            value={hp}
-            onChange={(e) => setHp(e.target.value)}
-            className="hidden"
-            tabIndex={-1}
-            autoComplete="off"
-          />
+          {ok && (
+            <div
+              role="alert"
+              className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 text-green-200 px-3 py-2"
+            >
+              ✅ Thanks! Your message was sent.
+            </div>
+          )}
+          {err && (
+            <div
+              role="alert"
+              className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2"
+            >
+              ❌ {err}
+            </div>
+          )}
 
-          <input
-            className="input"
-            placeholder="Your Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={80}
-            required
-          />
-          <input
-            className="input"
-            placeholder="Your Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            maxLength={120}
-            required
-          />
-          <textarea
-            className="input min-h-[140px]"
-            placeholder="Message"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            maxLength={2000}
-            required
-          />
+          <form onSubmit={onSubmit} className="space-y-4">
+            {/* Honeypot field (hidden) */}
+            <input
+              value={hp}
+              onChange={(e) => setHp(e.target.value)}
+              className="hidden"
+              tabIndex={-1}
+              autoComplete="off"
+            />
 
-          <button
-            className="w-full btn btn-primary py-3 font-semibold disabled:opacity-60"
-            disabled={sending}
-            type="submit"
-          >
-            {sending ? "Sending…" : "Send Message"}
-          </button>
-        </form>
-      </div>
-    </section>
+            <label htmlFor="name" className="sr-only">
+              Your Name
+            </label>
+            <input
+              id="name"
+              className="input"
+              placeholder="Your Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={80}
+              required
+            />
+
+            <label htmlFor="email" className="sr-only">
+              Your Email
+            </label>
+            <input
+              id="email"
+              className="input"
+              placeholder="Your Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              maxLength={120}
+              required
+            />
+
+            <label htmlFor="message" className="sr-only">
+              Message
+            </label>
+            <textarea
+              id="message"
+              className="input min-h-[140px]"
+              placeholder="Message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              maxLength={2000}
+              required
+            />
+
+            <button
+              className="w-full btn btn-primary py-3 font-semibold disabled:opacity-60"
+              disabled={sending}
+              type="submit"
+            >
+              {sending ? "Sending…" : "Send Message"}
+            </button>
+          </form>
+        </div>
+      </section>
+    </>
   );
 }

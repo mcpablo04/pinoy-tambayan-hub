@@ -1,6 +1,7 @@
 // src/pages/weather.tsx
 "use client";
 
+import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
 
 /* ===================== Types ===================== */
@@ -227,219 +228,246 @@ export default function WeatherPage() {
   }, [data]);
 
   return (
-    <section className="section">
-      <div className="container-page">
-        {/* Header */}
-        <h1 className="page-title">Weather</h1>
-        <p className="text-gray-400 mb-5">
-          7-day forecast for the Philippines. Timezone: Asia/Manila.
-        </p>
+    <>
+      {/* SEO */}
+      <Head>
+        <title>Philippines 7-Day Weather Forecast | Pinoy Tambayan Hub</title>
+        <meta
+          name="description"
+          content="Check the 7-day weather forecast for Manila, Cebu, Davao, Baguio, and more using Open-Meteo. Use your location for local forecasts."
+        />
+        <link rel="canonical" href="https://pinoytambayanhub.com/weather" />
 
-        {/* PAGASA Alerts — fixed height to avoid layout shift */}
-        <div className="mb-5 rounded-lg border border-white/10 bg-gray-800/70 p-4 min-h-[96px]">
-          <div className="flex items-start gap-3">
-            <div className="text-2xl" aria-hidden>🌀</div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-lg">PAGASA Alerts (PAR & LPA)</h3>
+        <meta property="og:title" content="Philippines 7-Day Weather Forecast" />
+        <meta
+          property="og:description"
+          content="Accurate 7-day forecast for PH cities. Quick search or use my location."
+        />
+        <meta property="og:image" content="/brand/og-cover.png" />
+        <meta property="og:url" content="https://pinoytambayanhub.com/weather" />
+        <meta property="og:type" content="website" />
 
-              {alertsLoading ? (
-                <div className="mt-2 animate-pulse space-y-2">
-                  <div className="h-4 bg-gray-700/60 rounded w-1/3" />
-                  <div className="h-3 bg-gray-700/50 rounded w-2/3" />
-                </div>
-              ) : alerts ? (
-                <div className="space-y-1 text-sm mt-1">
-                  <div className="truncate">
-                    <span className="font-medium">Tropical Cyclone in PAR:</span>{" "}
-                    {alerts.hasStormInPAR ? (
-                      <span className="text-red-300">
-                        YES — {alerts.category ?? "Tropical Cyclone"}
-                        {alerts.stormName ? (
-                          <b className="ml-1 uppercase">{alerts.stormName}</b>
-                        ) : null}
-                      </span>
-                    ) : (
-                      <span className="text-green-300">None detected</span>
-                    )}
-                    {" "}
-                    {alerts.bulletinUrl && (
-                      <a
-                        className="ml-2 text-blue-300 underline"
-                        href={alerts.bulletinUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        PAGASA Bulletin ↗
-                      </a>
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Philippines 7-Day Weather Forecast" />
+        <meta
+          name="twitter:description"
+          content="See today through the week for your city in the Philippines."
+        />
+        <meta name="twitter:image" content="/brand/og-cover.png" />
+      </Head>
+
+      <section className="section">
+        <div className="container-page">
+          {/* Header */}
+          <h1 className="page-title">Weather</h1>
+          <p className="text-gray-400 mb-5">
+            7-day forecast for the Philippines. Timezone: Asia/Manila.
+          </p>
+
+          {/* PAGASA Alerts — fixed height to avoid layout shift */}
+          <div className="mb-5 rounded-lg border border-white/10 bg-gray-800/70 p-4 min-h-[96px]">
+            <div className="flex items-start gap-3">
+              <div className="text-2xl" aria-hidden>🌀</div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-lg">PAGASA Alerts (PAR & LPA)</h3>
+
+                {alertsLoading ? (
+                  <div className="mt-2 animate-pulse space-y-2">
+                    <div className="h-4 bg-gray-700/60 rounded w-1/3" />
+                    <div className="h-3 bg-gray-700/50 rounded w-2/3" />
+                  </div>
+                ) : alerts ? (
+                  <div className="space-y-1 text-sm mt-1">
+                    <div className="truncate">
+                      <span className="font-medium">Tropical Cyclone in PAR:</span>{" "}
+                      {alerts.hasStormInPAR ? (
+                        <span className="text-red-300">
+                          YES — {alerts.category ?? "Tropical Cyclone"}
+                          {alerts.stormName ? (
+                            <b className="ml-1 uppercase">{alerts.stormName}</b>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="text-green-300">None detected</span>
+                      )}{" "}
+                      {alerts.bulletinUrl && (
+                        <a
+                          className="ml-2 text-blue-300 underline"
+                          href={alerts.bulletinUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          PAGASA Bulletin ↗
+                        </a>
+                      )}
+                    </div>
+
+                    <div className="truncate">
+                      <span className="font-medium">Low Pressure Area (LPA):</span>{" "}
+                      {alerts.hasLPA ? (
+                        <span className="text-amber-300">
+                          YES — {(alerts.lpaText ?? "See advisory").slice(0, 160)}…
+                        </span>
+                      ) : (
+                        <span className="text-green-300">None detected</span>
+                      )}{" "}
+                      {alerts.advisoryUrl && (
+                        <a
+                          className="ml-2 text-blue-300 underline"
+                          href={alerts.advisoryUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Advisory ↗
+                        </a>
+                      )}
+                    </div>
+
+                    {alerts.fetchedAt && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Updated:{" "}
+                        {new Date(alerts.fetchedAt).toLocaleString("en-PH", {
+                          timeZone: "Asia/Manila",
+                        })}{" "}
+                        (verify with PAGASA)
+                      </p>
                     )}
                   </div>
-
-                  <div className="truncate">
-                    <span className="font-medium">Low Pressure Area (LPA):</span>{" "}
-                    {alerts.hasLPA ? (
-                      <span className="text-amber-300">
-                        YES — {(alerts.lpaText ?? "See advisory").slice(0, 160)}…
-                      </span>
-                    ) : (
-                      <span className="text-green-300">None detected</span>
-                    )}
-                    {" "}
-                    {alerts.advisoryUrl && (
-                      <a
-                        className="ml-2 text-blue-300 underline"
-                        href={alerts.advisoryUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Advisory ↗
-                      </a>
-                    )}
-                  </div>
-
-                  {alerts.fetchedAt && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Updated:{" "}
-                      {new Date(alerts.fetchedAt).toLocaleString("en-PH", {
-                        timeZone: "Asia/Manila",
-                      })}{" "}
-                      (verify with PAGASA)
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-gray-400 text-sm mt-1">
-                  Couldn’t load alerts right now. Try again later.
-                </p>
-              )}
+                ) : (
+                  <p className="text-gray-400 text-sm mt-1">
+                    Couldn’t load alerts right now. Try again later.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Search / actions */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="flex-1 min-w-0">
-            <label htmlFor="q" className="sr-only">Search city</label>
-            <input
-              id="q"
-              type="text"
-              placeholder="Search city (e.g., Cebu, Davao, Baguio)"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="input"
-            />
-          </div>
+          {/* Search / actions */}
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="flex-1 min-w-0">
+              <label htmlFor="q" className="sr-only">Search city</label>
+              <input
+                id="q"
+                type="text"
+                placeholder="Search city (e.g., Cebu, Davao, Baguio)"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="input"
+              />
+            </div>
 
-          <div className="flex gap-2 w-full md:w-auto">
-            <button
-              onClick={handleSearch}
-              className="btn btn-primary w-full md:w-auto"
-            >
-              Search
-            </button>
-            <button
-              onClick={useMyLocation}
-              disabled={geoLoading}
-              className="btn btn-ghost w-full md:w-auto disabled:opacity-60"
-              aria-busy={geoLoading}
-              aria-live="polite"
-            >
-              {geoLoading ? (
-                <span className="inline-flex items-center gap-2">
-                  <span className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-transparent animate-spin" />
-                  Locating…
-                </span>
-              ) : (
-                "Use my location"
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* City chips */}
-        <div className="mt-4 overflow-x-auto no-scrollbar">
-          <div className="inline-flex gap-2 pr-2">
-            {PH_CITIES.map((c) => (
+            <div className="flex gap-2 w-full md:w-auto">
               <button
-                key={c.name}
-                onClick={() => setCity(c)}
-                className={`shrink-0 px-3 py-1.5 rounded-full border whitespace-nowrap ${
-                  c.name === city.name
-                    ? "bg-blue-600 border-blue-500 text-white"
-                    : "bg-gray-800/70 border-gray-700 text-gray-200 hover:bg-gray-700"
-                }`}
+                onClick={handleSearch}
+                className="btn btn-primary w-full md:w-auto"
               >
-                {c.name}
+                Search
               </button>
-            ))}
+              <button
+                onClick={useMyLocation}
+                disabled={geoLoading}
+                className="btn btn-ghost w-full md:w-auto disabled:opacity-60"
+                aria-busy={geoLoading}
+                aria-live="polite"
+              >
+                {geoLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-transparent animate-spin" />
+                    Locating…
+                  </span>
+                ) : (
+                  "Use my location"
+                )}
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Location line */}
-        <div className="mt-6 mb-3 flex items-center gap-3 min-w-0">
-          <h2 className="text-lg font-semibold truncate">
-            {city.name}{" "}
-            {city.country ? (
-              <span className="text-gray-400">• {city.country}</span>
-            ) : (
-              <span className="text-gray-400">• Philippines</span>
-            )}
-          </h2>
-          {refreshing && (
-            <span className="inline-flex items-center gap-2 text-sm text-gray-400">
-              <span className="w-3 h-3 rounded-full border-2 border-gray-500 border-t-transparent animate-spin" />
-              Updating…
-            </span>
-          )}
-        </div>
-        {geoErr && <p className="text-amber-400 text-sm mb-3">{geoErr}</p>}
-
-        {/* Forecast area */}
-        <div className="relative">
-          {initialLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className="min-h-[160px] rounded-lg bg-gray-800/50 animate-pulse min-w-0" />
+          {/* City chips */}
+          <div className="mt-4 overflow-x-auto no-scrollbar">
+            <div className="inline-flex gap-2 pr-2">
+              {PH_CITIES.map((c) => (
+                <button
+                  key={c.name}
+                  onClick={() => setCity(c)}
+                  className={`shrink-0 px-3 py-1.5 rounded-full border whitespace-nowrap ${
+                    c.name === city.name
+                      ? "bg-blue-600 border-blue-500 text-white"
+                      : "bg-gray-800/70 border-gray-700 text-gray-200 hover:bg-gray-700"
+                  }`}
+                >
+                  {c.name}
+                </button>
               ))}
             </div>
-          ) : days.length ? (
-            <>
+          </div>
+
+          {/* Location line */}
+          <div className="mt-6 mb-3 flex items-center gap-3 min-w-0">
+            <h2 className="text-lg font-semibold truncate">
+              {city.name}{" "}
+              {city.country ? (
+                <span className="text-gray-400">• {city.country}</span>
+              ) : (
+                <span className="text-gray-400">• Philippines</span>
+              )}
+            </h2>
+            {refreshing && (
+              <span className="inline-flex items-center gap-2 text-sm text-gray-400">
+                <span className="w-3 h-3 rounded-full border-2 border-gray-500 border-t-transparent animate-spin" />
+                Updating…
+              </span>
+            )}
+          </div>
+          {geoErr && <p className="text-amber-400 text-sm mb-3">{geoErr}</p>}
+
+          {/* Forecast area */}
+          <div className="relative">
+            {initialLoading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
-                {days.map((d) => (
-                  <div
-                    key={d.key}
-                    className="rounded-lg bg-gray-800/60 border border-white/5 p-4 min-h-[160px] min-w-0"
-                  >
-                    <div className="text-xs text-gray-400 mb-2">{d.label}</div>
-                    <div className="flex items-start gap-2 mb-2 min-w-0">
-                      <span className="text-3xl leading-none shrink-0">{d.emoji}</span>
-                      <div className="text-sm text-gray-300 whitespace-normal break-words leading-snug min-w-0">
-                        {d.text}
-                      </div>
-                    </div>
-                    <div className="text-lg font-semibold">
-                      {d.tMax}°C{" "}
-                      <span className="text-sm text-gray-400 ml-1">{d.tMin}°C</span>
-                    </div>
-                  </div>
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <div key={i} className="min-h[160px] rounded-lg bg-gray-800/50 animate-pulse min-w-0" />
                 ))}
               </div>
-
-              {refreshing && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <div className="rounded-xl bg-black/30 px-3 py-2">
-                    <div className="w-6 h-6 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
-                  </div>
+            ) : days.length ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
+                  {days.map((d) => (
+                    <div
+                      key={d.key}
+                      className="rounded-lg bg-gray-800/60 border border-white/5 p-4 min-h-[160px] min-w-0"
+                    >
+                      <div className="text-xs text-gray-400 mb-2">{d.label}</div>
+                      <div className="flex items-start gap-2 mb-2 min-w-0">
+                        <span className="text-3xl leading-none shrink-0">{d.emoji}</span>
+                        <div className="text-sm text-gray-300 whitespace-normal break-words leading-snug min-w-0">
+                          {d.text}
+                        </div>
+                      </div>
+                      <div className="text-lg font-semibold">
+                        {d.tMax}°C{" "}
+                        <span className="text-sm text-gray-400 ml-1">{d.tMin}°C</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </>
-          ) : (
-            <p className="text-gray-400">No forecast available.</p>
-          )}
-        </div>
 
-        <div className="page-bottom-spacer" />
-      </div>
-    </section>
+                {refreshing && (
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className="rounded-xl bg-black/30 px-3 py-2">
+                      <div className="w-6 h-6 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-gray-400">No forecast available.</p>
+            )}
+          </div>
+
+          <div className="page-bottom-spacer" />
+        </div>
+      </section>
+    </>
   );
 }

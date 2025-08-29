@@ -1,5 +1,7 @@
+// src/pages/stories/[slug].tsx
 "use client";
 
+import Head from "next/head";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -83,14 +85,30 @@ type StoryDoc = {
   updatedAt?: Timestamp;
 };
 
+const SITE_URL = "https://pinoytambayanhub.com"; // adjust if different
+
 const getIdFromSlug = (slugOrId: string) => slugOrId.split("-").pop() as string;
 const fmtDate = (ts?: Timestamp) => {
+  try {
+    if (!ts) return "";
+    const d = (ts as any).toDate ? (ts as any).toDate() as Date : new Date((ts as any).seconds * 1000);
+    return d.toISOString();
+  } catch { return ""; }
+};
+const fmtDatePretty = (ts?: Timestamp) => {
   try {
     if (!ts) return "";
     const d = (ts as any).toDate ? (ts as any).toDate() as Date : new Date((ts as any).seconds * 1000);
     return d.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
   } catch { return ""; }
 };
+
+// Build a safe description from the body for meta tags
+function makeDescription(body?: string, max = 160) {
+  if (!body) return "Read a community-written Pinoy story on Pinoy Tambayan Hub.";
+  const text = body.replace(/\s+/g, " ").trim();
+  return text.length > max ? text.slice(0, max - 1) + "…" : text;
+}
 
 export default function StoryPage() {
   const router = useRouter();
@@ -165,102 +183,184 @@ export default function StoryPage() {
     }
   }, [id, story, user, router]);
 
+  // ----- SEO pieces (computed after story loads) -----
+  const canonicalPath = slug ? `/stories/${slug}` : "";
+  const canonicalUrl = `${SITE_URL}${canonicalPath}`;
+  const metaTitle = story?.title ? `${story.title} | Pinoy Tambayan Hub` : "Story | Pinoy Tambayan Hub";
+  const metaDesc = makeDescription(story?.content?.body);
+  const publishedISO = fmtDate(story?.createdAt);
+  const updatedISO = fmtDate(story?.updatedAt || story?.createdAt);
+  const tags = story?.tags ?? [];
+
   if (loading) {
     return (
-      <section className="section">
-        <article className="container-page max-w-3xl">
-          <div className="h-4 w-24 rounded bg-gray-700/50 mb-4 animate-pulse" />
-          <div className="h-6 w-3/4 rounded bg-gray-700/60 mb-3 animate-pulse" />
-          <div className="h-6 w-1/2 rounded bg-gray-700/60 mb-6 animate-pulse" />
-          <div className="space-y-3">{Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-4 w-full rounded bg-gray-800/60 animate-pulse" />
-          ))}</div>
-        </article>
-      </section>
+      <>
+        {/* Minimal head while loading */}
+        <Head>
+          <title>Loading story… | Pinoy Tambayan Hub</title>
+          <meta name="robots" content="noindex" />
+        </Head>
+
+        <section className="section">
+          <article className="container-page max-w-3xl">
+            <div className="h-4 w-24 rounded bg-gray-700/50 mb-4 animate-pulse" />
+            <div className="h-6 w-3/4 rounded bg-gray-700/60 mb-3 animate-pulse" />
+            <div className="h-6 w-1/2 rounded bg-gray-700/60 mb-6 animate-pulse" />
+            <div className="space-y-3">{Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-4 w-full rounded bg-gray-800/60 animate-pulse" />
+            ))}</div>
+          </article>
+        </section>
+      </>
     );
   }
 
   if (!story || !id) {
     return (
-      <section className="section">
-        <article className="container-page max-w-3xl text-gray-300">Story not found.</article>
-      </section>
+      <>
+        <Head>
+          <title>Story not found | Pinoy Tambayan Hub</title>
+          <meta name="robots" content="noindex" />
+        </Head>
+        <section className="section">
+          <article className="container-page max-w-3xl text-gray-300">Story not found.</article>
+        </section>
+      </>
     );
   }
 
   const isOwner = !!user && user.uid === story.authorId;
 
   return (
-    <section className="section">
-      <article className="container-page max-w-3xl">
-        {/* overlays */}
-        <ConfirmDialog state={confirm} setState={setConfirm} />
-        <ToastViewport toasts={toasts} onClose={popToast} />
+    <>
+      {/* SEO (dynamic per-story, including article tags) */}
+      <Head>
+        <title>{metaTitle}</title>
+        <meta name="description" content={metaDesc} />
+        <link rel="canonical" href={canonicalUrl} />
 
-        {/* anchor for header offset */}
-        <div ref={topRef} style={{ scrollMarginTop: "110px" }} />
+        {/* Common OG/Twitter */}
+        <meta property="og:title" content={story.title} />
+        <meta property="og:description" content={metaDesc} />
+        <meta property="og:type" content="article" />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:image" content="/brand/og-cover.png" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={story.title} />
+        <meta name="twitter:description" content={metaDesc} />
+        <meta name="twitter:image" content="/brand/og-cover.png" />
 
-        {/* Back + actions */}
-        <div className="mb-4 sm:mb-6 flex items-center justify-between">
-          <Link href="/stories" className="inline-flex items-center gap-2 text-sm text-gray-300 hover:text-white px-2 py-1 -mx-2 rounded hover:bg-white/5">
-            <span aria-hidden>←</span> Back to Stories
-          </Link>
+        {/* Article metadata */}
+        {publishedISO && <meta property="article:published_time" content={publishedISO} />}
+        {updatedISO && <meta property="article:modified_time" content={updatedISO} />}
+        {story.authorName && <meta property="article:author" content={story.authorName} />}
+        {tags.map((t) => (
+          <meta key={t} property="article:tag" content={t} />
+        ))}
 
-          {isOwner && (
-            <div className="flex items-center gap-2">
-              <Link href={`/stories/edit/${id}`} className="px-3 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10 text-sm">Edit</Link>
-              <button onClick={onDeleteStory} className="px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-500 text-white text-sm">Delete</button>
-            </div>
-          )}
-        </div>
+        {/* Optional: keywords for classic crawlers */}
+        {tags.length > 0 && <meta name="keywords" content={tags.join(", ")} />}
 
-        {/* Title + meta */}
-        <h1 className="text-2xl sm:text-3xl md:text-4xl font-semibold text-white leading-tight">{story.title}</h1>
+        {/* JSON-LD Article schema */}
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Article",
+              headline: story.title,
+              author: story.authorName ? [{ "@type": "Person", name: story.authorName }] : undefined,
+              datePublished: publishedISO || undefined,
+              dateModified: updatedISO || undefined,
+              keywords: tags.join(", "),
+              mainEntityOfPage: canonicalUrl,
+              image: [`${SITE_URL}/brand/og-cover.png`],
+              publisher: {
+                "@type": "Organization",
+                name: "Pinoy Tambayan Hub",
+                logo: {
+                  "@type": "ImageObject",
+                  url: `${SITE_URL}/brand/pt-hub-logo-180.png`,
+                },
+              },
+              description: metaDesc,
+            }),
+          }}
+        />
+      </Head>
 
-        <div className="mt-2 sm:mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-300">
-          <span>by <span className="font-medium text-white">{story.authorName}</span></span>
-          {story.authorHandle && (
-            <>
-              <span className="text-gray-500">·</span>
-              <Link href={`/u/${story.authorHandle}`} className="text-blue-400 hover:underline">@{story.authorHandle}</Link>
-            </>
-          )}
-          {story.createdAt && (
-            <>
-              <span className="text-gray-500">·</span>
-              <span className="text-gray-400">{fmtDate(story.createdAt)}</span>
-            </>
-          )}
-        </div>
+      <section className="section">
+        <article className="container-page max-w-3xl">
+          {/* overlays */}
+          <ConfirmDialog state={confirm} setState={setConfirm} />
+          <ToastViewport toasts={toasts} onClose={popToast} />
 
-        {/* Tags */}
-        {story.tags?.length ? (
-          <div className="-mx-4 px-4 mt-3">
-            <div className="flex gap-2 overflow-x-auto no-scrollbar">
-              {story.tags.map((t) => (
-                <span key={t} className="shrink-0 text-xs px-2 py-1 rounded-full bg-white/10 text-gray-200">#{t}</span>
-              ))}
-            </div>
+          {/* anchor for header offset */}
+          <div ref={topRef} style={{ scrollMarginTop: "110px" }} />
+
+          {/* Back + actions */}
+          <div className="mb-4 sm:mb-6 flex items-center justify-between">
+            <Link href="/stories" className="inline-flex items-center gap-2 text-sm text-gray-300 hover:text-white px-2 py-1 -mx-2 rounded hover:bg-white/5">
+              <span aria-hidden>←</span> Back to Stories
+            </Link>
+
+            {isOwner && (
+              <div className="flex items-center gap-2">
+                <Link href={`/stories/edit/${id}`} className="px-3 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10 text-sm">Edit</Link>
+                <button onClick={onDeleteStory} className="px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-500 text-white text-sm">Delete</button>
+              </div>
+            )}
           </div>
-        ) : null}
 
-        {/* Content */}
-        <div className="mt-6 sm:mt-8">
-          <p className="whitespace-pre-wrap leading-relaxed text-[15px] sm:text-base text-gray-200">
-            {story.content.body}
-          </p>
-        </div>
+          {/* Title + meta */}
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-semibold text-white leading-tight">{story.title}</h1>
 
-        {/* Reactions — INLINE on all screens (no sticky footer) */}
-        <div className="mt-6 sm:mt-8">
-          <ReactionBar storyId={id} notify={pushToast} />
-        </div>
+          <div className="mt-2 sm:mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-300">
+            <span>by <span className="font-medium text-white">{story.authorName}</span></span>
+            {story.authorHandle && (
+              <>
+                <span className="text-gray-500">·</span>
+                <Link href={`/u/${story.authorHandle}`} className="text-blue-400 hover:underline">@{story.authorHandle}</Link>
+              </>
+            )}
+            {story.createdAt && (
+              <>
+                <span className="text-gray-500">·</span>
+                <span className="text-gray-400">{fmtDatePretty(story.createdAt)}</span>
+              </>
+            )}
+          </div>
 
-        {/* Comments */}
-        <div className="mt-6 sm:mt-8">
-          <Comments storyId={id} initialBatch={5} enableDelete notify={pushToast} />
-        </div>
-      </article>
-    </section>
+          {/* Tags (UI) */}
+          {story.tags?.length ? (
+            <div className="-mx-4 px-4 mt-3">
+              <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                {story.tags.map((t) => (
+                  <span key={t} className="shrink-0 text-xs px-2 py-1 rounded-full bg-white/10 text-gray-200">#{t}</span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Content */}
+          <div className="mt-6 sm:mt-8">
+            <p className="whitespace-pre-wrap leading-relaxed text-[15px] sm:text-base text-gray-200">
+              {story.content.body}
+            </p>
+          </div>
+
+          {/* Reactions — INLINE on all screens (no sticky footer) */}
+          <div className="mt-6 sm:mt-8">
+            <ReactionBar storyId={id} notify={pushToast} />
+          </div>
+
+          {/* Comments */}
+          <div className="mt-6 sm:mt-8">
+            <Comments storyId={id} initialBatch={5} enableDelete notify={pushToast} />
+          </div>
+        </article>
+      </section>
+    </>
   );
 }
