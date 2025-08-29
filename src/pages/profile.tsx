@@ -28,9 +28,11 @@ import {
   type Timestamp,
   type Query,
   type CollectionReference,
+  type DocumentData,
 } from "firebase/firestore";
 import type { FirebaseError } from "firebase/app";
 import Skeleton from "../components/Skeleton";
+import MetaHead from "../components/MetaHead";
 
 /* --------------------------- tiny toast system --------------------------- */
 type ToastKind = "success" | "error" | "info";
@@ -186,7 +188,10 @@ const toStoryLink = (id: string, slug?: string | null) =>
   `/stories/${slug && slug.length > 0 ? slug : id}`;
 
 /** Best-effort subcollection cleanup */
-async function deleteSubcollection(col: CollectionReference | Query, batchSize = 400) {
+async function deleteSubcollection(
+  col: CollectionReference<DocumentData> | Query<DocumentData>,
+  batchSize = 400
+) {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const snap = await getDocs(query(col, fsLimit(batchSize)));
@@ -673,242 +678,251 @@ export default function ProfilePage() {
   }
 
   return (
-    <section className="section">
-      <div className="container-page max-w-5xl">
-        {/* Confirm + Toasts */}
-        <ConfirmDialog state={confirm} setState={setConfirm} />
-        <ToastViewport toasts={toasts} onClose={popToast} />
+    <>
+      <MetaHead
+        title="My Profile • Pinoy Tambayan Hub"
+        description="Manage your display name, avatar, and see your stories and comments on Pinoy Tambayan Hub."
+        path="/profile"
+        robots="noindex,follow"
+      />
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
-          <div className="flex items-center gap-4">
-            <div className="avatar h-14 w-14 rounded-full overflow-hidden bg-gray-700 shrink-0">
-              {photo ? (
-                <img src={photo} alt="avatar" className="h-full w-full object-cover" />
-              ) : (
-                <img
-                  src={`data:image/svg+xml;utf8,\
+      <section className="section">
+        <div className="container-page max-w-5xl">
+          {/* Confirm + Toasts */}
+          <ConfirmDialog state={confirm} setState={setConfirm} />
+          <ToastViewport toasts={toasts} onClose={popToast} />
+
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
+            <div className="flex items-center gap-4">
+              <div className="avatar h-14 w-14 rounded-full overflow-hidden bg-gray-700 shrink-0">
+                {photo ? (
+                  <img src={photo} alt="avatar" className="h-full w-full object-cover" />
+                ) : (
+                  <img
+                    src={`data:image/svg+xml;utf8,\
                 <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\
                 <rect width='100' height='100' fill='%231f2937'/>\
                 <circle cx='50' cy='38' r='18' fill='%234b5563'/>\
                 <rect x='22' y='62' width='56' height='24' rx='12' fill='%234b5563'/>\
                 </svg>`}
-                  alt="avatar placeholder"
-                  className="h-full w-full object-cover"
-                />
-              )}
-            </div>
+                    alt="avatar placeholder"
+                    className="h-full w-full object-cover"
+                  />
+                )}
+              </div>
 
-            <div className="min-w-0">
-              <h1 className="page-title mb-0">{p?.displayName || "My Profile"}</h1>
-              <div className="text-sm text-gray-400 truncate">{p?.email || user.email}</div>
-              <div className="text-xs text-gray-500">
-                {joinedDate ? `Joined ${joinedDate}` : ""}
-                {currentLower ? (
-                  <>
-                    {" "}
-                    • <span className="text-gray-300">@{currentLower}</span>
-                  </>
-                ) : null}
+              <div className="min-w-0">
+                <h1 className="page-title mb-0">{p?.displayName || "My Profile"}</h1>
+                <div className="text-sm text-gray-400 truncate">{p?.email || user.email}</div>
+                <div className="text-xs text-gray-500">
+                  {joinedDate ? `Joined ${joinedDate}` : ""}
+                  {currentLower ? (
+                    <>
+                      {" "}
+                      • <span className="text-gray-300">@{currentLower}</span>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="sm:ml-auto w-full sm:w-auto">
-            <Link href="/stories/new" className="btn btn-primary w-full sm:w-auto">
-              Write a Story
-            </Link>
-          </div>
-        </div>
-
-        {/* Profile editor */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <section className="card">
-            <h2 className="text-base sm:text-lg font-semibold mb-3">Profile Photo</h2>
-            <label className="text-sm text-gray-400 block mb-2">Upload a new avatar (max 4 MB)</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={onPickFile}
-              disabled={uploadBusy}
-              className="block w-full text-sm file:mr-4 file:rounded file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-white hover:file:bg-blue-500 disabled:opacity-60"
-            />
-            {uploadMsg && <div className="text-sm text-gray-300 mt-2">{uploadMsg}</div>}
-          </section>
-
-          <section className="card">
-            <h2 className="text-base sm:text-lg font-semibold mb-3">Display Name</h2>
-            <input
-              className="input"
-              placeholder="Display name (3–40 chars, must be unique)"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={40}
-            />
-            <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-center">
-              <button onClick={save} className="btn btn-primary w-full sm:w-auto">
-                Save changes
-              </button>
-            </div>
-          </section>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
-          <div className="card h-24">
-            <div className="text-gray-400 text-xs">Posts</div>
-            <div className="mt-1 text-2xl text-white font-semibold">
-              {statsLoading ? <Skeleton className="h-6 w-14" /> : storyCount ?? "—"}
+            <div className="sm:ml-auto w-full sm:w-auto">
+              <Link href="/stories/new" className="btn btn-primary w-full sm:w-auto">
+                Write a Story
+              </Link>
             </div>
           </div>
-          <div className="card h-24">
-            <div className="text-gray-400 text-xs">Comments</div>
-            <div className="mt-1 text-2xl text-white font-semibold">
-              {statsLoading ? <Skeleton className="h-6 w-14" /> : commentCount ?? "—"}
+
+          {/* Profile editor */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <section className="card">
+              <h2 className="text-base sm:text-lg font-semibold mb-3">Profile Photo</h2>
+              <label className="text-sm text-gray-400 block mb-2">Upload a new avatar (max 4 MB)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={onPickFile}
+                disabled={uploadBusy}
+                className="block w-full text-sm file:mr-4 file:rounded file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-white hover:file:bg-blue-500 disabled:opacity-60"
+              />
+              {uploadMsg && <div className="text-sm text-gray-300 mt-2">{uploadMsg}</div>}
+            </section>
+
+            <section className="card">
+              <h2 className="text-base sm:text-lg font-semibold mb-3">Display Name</h2>
+              <input
+                className="input"
+                placeholder="Display name (3–40 chars, must be unique)"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={40}
+              />
+              <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-center">
+                <button onClick={save} className="btn btn-primary w-full sm:w-auto">
+                  Save changes
+                </button>
+              </div>
+            </section>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+            <div className="card h-24">
+              <div className="text-gray-400 text-xs">Posts</div>
+              <div className="mt-1 text-2xl text-white font-semibold">
+                {statsLoading ? <Skeleton className="h-6 w-14" /> : storyCount ?? "—"}
+              </div>
+            </div>
+            <div className="card h-24">
+              <div className="text-gray-400 text-xs">Comments</div>
+              <div className="mt-1 text-2xl text-white font-semibold">
+                {statsLoading ? <Skeleton className="h-6 w-14" /> : commentCount ?? "—"}
+              </div>
+            </div>
+            <div className="card h-24">
+              <div className="text-gray-400 text-xs">Reads (session)</div>
+              <div className="mt-1 text-2xl text-white font-semibold">—</div>
+            </div>
+            <div className="card h-24">
+              <div className="text-gray-400 text-xs">Reactions</div>
+              <div className="mt-1 text-2xl text-white font-semibold">—</div>
             </div>
           </div>
-          <div className="card h-24">
-            <div className="text-gray-400 text-xs">Reads (session)</div>
-            <div className="mt-1 text-2xl text-white font-semibold">—</div>
-          </div>
-          <div className="card h-24">
-            <div className="text-gray-400 text-xs">Reactions</div>
-            <div className="mt-1 text-2xl text-white font-semibold">—</div>
-          </div>
-        </div>
-        {countNote && <div className="mb-6 text-xs text-amber-300">{countNote}</div>}
+          {countNote && <div className="mb-6 text-xs text-amber-300">{countNote}</div>}
 
-        {/* Lists */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* My Stories */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3">My Stories</h2>
+          {/* Lists */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* My Stories */}
+            <section>
+              <h2 className="text-lg font-semibold mb-3">My Stories</h2>
 
-            {storiesLoading ? (
-              <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
-                <Skeleton className="h-16" />
-                <Skeleton className="h-16" />
-                <Skeleton className="h-16" />
-              </ul>
-            ) : stories.length === 0 ? (
-              <p className="text-gray-400">
-                You haven’t written anything yet.{" "}
-                <Link href="/stories/new" className="text-blue-400 underline">
-                  Start here
-                </Link>
-                .
-              </p>
-            ) : (
-              <>
+              {storiesLoading ? (
                 <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
-                  {stories.map((s) => (
-                    <li key={s.id} className="card p-3">
-                      <div className="flex items-start gap-3">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium">
-                            <Link href={toStoryLink(s.id, s.slug)} className="hover:underline">
-                              {s.title}
-                            </Link>
-                          </h3>
-                          <div className="text-xs text-gray-400 mt-1">
-                            {s.status || "published"} · {s.visibility || "public"}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => deleteStory(s.id)}
-                          className="shrink-0 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5"
-                          title="Delete story"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
                 </ul>
+              ) : stories.length === 0 ? (
+                <p className="text-gray-400">
+                  You haven’t written anything yet.{" "}
+                  <Link href="/stories/new" className="text-blue-400 underline">
+                    Start here
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <>
+                  <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
+                    {stories.map((s) => (
+                      <li key={s.id} className="card p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-medium">
+                              <Link href={toStoryLink(s.id, s.slug)} className="hover:underline">
+                                {s.title}
+                              </Link>
+                            </h3>
+                            <div className="text-xs text-gray-400 mt-1">
+                              {s.status || "published"} · {s.visibility || "public"}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => deleteStory(s.id)}
+                            className="shrink-0 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5"
+                            title="Delete story"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
 
-                {showStoriesViewAll && (
-                  <div className="mt-3">
-                    <button
-                      onClick={() => setStoriesLimit(ALL_LIMIT)}
-                      className="text-sm text-blue-400 hover:underline"
-                    >
-                      View all my stories ({storyCount})
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
+                  {showStoriesViewAll && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() => setStoriesLimit(ALL_LIMIT)}
+                        className="text-sm text-blue-400 hover:underline"
+                      >
+                        View all my stories ({storyCount})
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
 
-          {/* My Recent Comments */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3">My Recent Comments</h2>
+            {/* My Recent Comments */}
+            <section>
+              <h2 className="text-lg font-semibold mb-3">My Recent Comments</h2>
 
-            {commentsLoading ? (
-              <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
-                <Skeleton className="h-16" />
-                <Skeleton className="h-16" />
-                <Skeleton className="h-16" />
-              </ul>
-            ) : comments.length === 0 ? (
-              <p className="text-gray-400">No comments yet.</p>
-            ) : (
-              <>
+              {commentsLoading ? (
                 <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
-                  {comments.map((c) => (
-                    <li key={c.id} className="card p-3">
-                      <div className="flex items-start gap-3">
-                        <div className="flex-1">
-                          <p className="text-gray-100 whitespace-pre-wrap break-words">
-                            {c.body.length > 160 ? c.body.slice(0, 160) + "…" : c.body}
-                          </p>
-                          <div className="text-xs text-gray-400 mt-1">
-                            on{" "}
-                            <Link href={toStoryLink(c.storyId, null)} className="text-blue-400 hover:underline">
-                              this story
-                            </Link>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => deleteComment(c.storyId, c.id)}
-                          className="shrink-0 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5"
-                          title="Delete comment"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
                 </ul>
+              ) : comments.length === 0 ? (
+                <p className="text-gray-400">No comments yet.</p>
+              ) : (
+                <>
+                  <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
+                    {comments.map((c) => (
+                      <li key={c.id} className="card p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1">
+                            <p className="text-gray-100 whitespace-pre-wrap break-words">
+                              {c.body.length > 160 ? c.body.slice(0, 160) + "…" : c.body}
+                            </p>
+                            <div className="text-xs text-gray-400 mt-1">
+                              on{" "}
+                              <Link href={toStoryLink(c.storyId, null)} className="text-blue-400 hover:underline">
+                                this story
+                              </Link>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => deleteComment(c.storyId, c.id)}
+                            className="shrink-0 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5"
+                            title="Delete comment"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
 
-                {showCommentsViewAll && (
-                  <div className="mt-3">
-                    <button
-                      onClick={() => setCommentsLimit(ALL_LIMIT)}
-                      className="text-sm text-blue-400 hover:underline"
-                    >
-                      View all my comments ({commentCount})
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
+                  {showCommentsViewAll && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() => setCommentsLimit(ALL_LIMIT)}
+                        className="text-sm text-blue-400 hover:underline"
+                      >
+                        View all my comments ({commentCount})
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          </div>
+
+          <div className="h-px bg-gray-800 my-8" />
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={signOutApp}
+              className="w-full sm:w-auto text-center text-red-300 hover:text-red-200 underline px-4 py-2 rounded-md hover:bg-white/5 transition"
+            >
+              Sign out
+            </button>
+          </div>
+
+          <div className="page-bottom-spacer" />
         </div>
-
-        <div className="h-px bg-gray-800 my-8" />
-
-        <div className="flex flex-col sm:flex-row gap-2">
-          <button
-            onClick={signOutApp}
-            className="w-full sm:w-auto text-center text-red-300 hover:text-red-200 underline px-4 py-2 rounded-md hover:bg-white/5 transition"
-          >
-            Sign out
-          </button>
-        </div>
-
-        <div className="page-bottom-spacer" />
-      </div>
-    </section>
+      </section>
+    </>
   );
 }
