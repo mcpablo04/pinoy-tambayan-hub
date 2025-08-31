@@ -95,12 +95,11 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           <NavBar />
           <ScrollReset />
 
-          {/* Mobile: small gap (sticky takes space in flow); Desktop: clear fixed header */}
+          {/* Desktop gets padding to clear fixed header; mobile doesn't (handled by NavBar spacer) */}
           <main
-  className="flex-grow px-4 md:px-6 max-w-6xl mx-auto w-full"
-  key={router.asPath}
->
-
+            className="flex-grow md:pt-24 px-4 md:px-6 max-w-6xl mx-auto w-full"
+            key={router.asPath}
+          >
             <Component {...pageProps} />
           </main>
 
