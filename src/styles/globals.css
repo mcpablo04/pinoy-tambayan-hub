@@ -22,16 +22,26 @@
 html { scroll-behavior: auto !important; }
 
 /* ===== Base ===== */
+/* IMPORTANT: the page (body) must own the scroll for sticky to work reliably */
 html, body {
   background: var(--background);
   color: var(--foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Inter", Arial, Helvetica, sans-serif;
-  height: 100%;
+
+  /* remove height:100%; it breaks sticky by changing the scroll container */
+  /* height: 100%;  <-- removed on purpose */
+
+  min-height: 100%;
   overflow-x: hidden;
+  overflow-y: auto;
+
   /* iOS safe areas */
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
 }
+
+/* Next.js root should not constrain vertical overflow */
+#___next, #__next { min-height: 100%; overflow: visible; }
 
 /* Predictable sizing */
 *, *::before, *::after { box-sizing: border-box; }
@@ -113,9 +123,19 @@ img, svg, video { max-width: 100%; height: auto; }
 /* ===== Page chrome ===== */
 .app-shell {
   @apply bg-darkbg text-lighttext min-h-screen flex flex-col overflow-x-hidden;
+  /* Critical: do NOT capture vertical scroll on the app shell */
+  overflow-y: visible !important;
 }
 
+/* Handy spacer */
 .page-bottom-spacer { height: 2rem; }
 
 .stack-gap > * + * { margin-top: .75rem; }
 @media (min-width: 640px) { .stack-gap > * + * { margin-top: 1rem; } }
+
+/* ===== Sticky helpers ===== */
+/* If some ancestor sets transform/filter (can break sticky), this helps in practice */
+.sticky { will-change: auto; }
+
+/* Safe-area helpers (iOS notch) */
+:root { --safe-top: env(safe-area-inset-top); }
