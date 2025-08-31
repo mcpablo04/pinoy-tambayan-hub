@@ -1,19 +1,68 @@
 // pages/marketplace/new.tsx
 "use client";
 
-import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { db } from "../../lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
+import MetaHead from "../../components/MetaHead";
+
+/* ===== Toast (same as other pages) ===== */
+type ToastKind = "success" | "error" | "info";
+type ToastItem = { id: number; kind: ToastKind; text: string };
+
+function ToastViewport({ toasts, onClose }: { toasts: ToastItem[]; onClose: (id: number) => void }) {
+  return (
+    <div className="fixed z-[100] bottom-4 right-4 flex flex-col gap-2 w-[min(90vw,340px)]">
+      {toasts.map((t) => (
+        <Toast key={t.id} item={t} onClose={() => onClose(t.id)} />
+      ))}
+    </div>
+  );
+}
+function Toast({ item, onClose }: { item: ToastItem; onClose: () => void }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    setShow(true);
+    const hide = setTimeout(() => setShow(false), 2300);
+    const done = setTimeout(onClose, 2600);
+    return () => {
+      clearTimeout(hide);
+      clearTimeout(done);
+    };
+  }, [onClose]);
+  const tone =
+    item.kind === "success"
+      ? "bg-emerald-600/90 border-emerald-400/40"
+      : item.kind === "error"
+      ? "bg-red-600/90 border-red-400/40"
+      : "bg-gray-800/90 border-white/10";
+  const icon = item.kind === "success" ? "✅" : item.kind === "error" ? "⚠️" : "ℹ️";
+  return (
+    <div
+      className={`pointer-events-auto rounded-lg border text-white shadow-xl backdrop-blur-sm px-3 py-2 text-sm transition-all duration-300
+        ${tone} ${show ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-2">
+        <span aria-hidden>{icon}</span>
+        <div className="flex-1">{item.text}</div>
+        <button onClick={onClose} className="ml-2 text-white/80 hover:text-white">✕</button>
+      </div>
+    </div>
+  );
+}
+/* ======================================= */
 
 const CATEGORIES = ["Audio","Wearables","Chargers","Streaming","PC Parts","Appliances","Others"];
 
 export default function NewProductPage() {
   const router = useRouter();
   const { user, profile } = useAuth();
+
   const [loading, setLoading] = useState(false);
   const [ack, setAck] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +70,13 @@ export default function NewProductPage() {
     title: "", category: "", pricePhp: "", store: "",
     imageUrl: "", affiliateUrl: "", blurb: "",
   });
+
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const pushToast = (kind: ToastKind, text: string) =>
+    setToasts((prev) => [...prev, { id: Date.now() + Math.random(), kind, text }]);
+  const popToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  useEffect(() => { router.prefetch("/marketplace"); }, [router]);
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>) =>
     setForm(f => ({ ...f, [e.target.name]: e.target.value }));
@@ -30,8 +86,15 @@ export default function NewProductPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!user) { setError("Please log in to submit a product."); return; }
-    if (!ack) { setError("You must confirm the AdSense/Content policy warning before submitting."); return; }
+
+    if (!user) {
+      const msg = "Please log in to submit a product.";
+      setError(msg); pushToast("info", msg); return;
+    }
+    if (!ack) {
+      const msg = "You must confirm the AdSense/Content policy warning before submitting.";
+      setError(msg); pushToast("error", msg); return;
+    }
 
     const title = form.title.trim();
     const imageUrl = form.imageUrl.trim();
@@ -42,12 +105,12 @@ export default function NewProductPage() {
     const blurb = form.blurb?.trim() || "";
 
     if (!title || !imageUrl || !affiliateUrl) {
-      setError("Title, Image URL, and Affiliate Link are required.");
-      return;
+      const msg = "Title, Image URL, and Affiliate Link are required.";
+      setError(msg); pushToast("error", msg); return;
     }
     if (!validUrl(imageUrl) || !validUrl(affiliateUrl)) {
-      setError("Please provide valid URLs for Image and Affiliate Link.");
-      return;
+      const msg = "Please provide valid URLs for Image and Affiliate Link.";
+      setError(msg); pushToast("error", msg); return;
     }
 
     setLoading(true);
@@ -57,22 +120,34 @@ export default function NewProductPage() {
         imageUrl, affiliateUrl,
         ownerUid: user.uid,
         ownerName: profile?.displayName || user.displayName || user.email || "User",
-        complianceAck: true,                 // 🔒 required by rules
+        complianceAck: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      router.push("/marketplace?submitted=1");
+
+      pushToast("success", "Product posted! 🎉");
+      setTimeout(() => router.push("/marketplace?submitted=1"), 400);
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || "Failed to submit. Please try again.");
+      const msg = err?.message || "Failed to submit. Please try again.";
+      setError(msg); pushToast("error", msg);
     } finally {
       setLoading(false);
     }
   }
 
+  const showImagePreview = validUrl(form.imageUrl);
+
   return (
     <>
-      <Head><title>Submit a Product • Marketplace</title></Head>
+      <MetaHead
+        title="Submit a Product • Marketplace"
+        description="Post your affiliate pick for the Pinoy Tambayan Hub marketplace."
+        path="/marketplace/new"
+        robots="noindex,follow"
+      />
+
+      <ToastViewport toasts={toasts} onClose={popToast} />
 
       <main className="container-page section">
         <div className="mb-4 flex items-center justify-between">
@@ -136,6 +211,12 @@ export default function NewProductPage() {
               <div>
                 <label className="block text-xs uppercase tracking-wide text-gray-400 mb-1">Image URL *</label>
                 <input name="imageUrl" value={form.imageUrl} onChange={onChange} className="input" placeholder="https://example.com/image.jpg" required />
+                {showImagePreview && (
+                  <div className="mt-2 w-full overflow-hidden rounded border border-white/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={form.imageUrl} alt="Preview" className="w-full h-36 object-cover" />
+                  </div>
+                )}
               </div>
             </div>
 

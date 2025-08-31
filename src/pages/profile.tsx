@@ -174,6 +174,18 @@ type MyComment = {
   createdAt?: Timestamp;
 };
 
+/* ✅ NEW: product type */
+type MyProduct = {
+  id: string;
+  title: string;
+  imageUrl: string;
+  affiliateUrl: string;
+  pricePhp?: number | null;
+  category?: string | null;
+  store?: string | null;
+  createdAt?: Timestamp;
+};
+
 const INITIAL_LIMIT = 3;
 const ALL_LIMIT = 100;
 
@@ -247,6 +259,13 @@ export default function ProfilePage() {
   const [commentsLimit, setCommentsLimit] = useState(INITIAL_LIMIT);
 
   const [countNote, setCountNote] = useState<string | null>(null);
+
+  /* ✅ NEW: products state */
+  const [products, setProducts] = useState<MyProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsLimit, setProductsLimit] = useState(INITIAL_LIMIT);
+  const [productCount, setProductCount] = useState<number | null>(null);
+  const [productsNote, setProductsNote] = useState<string | null>(null);
 
   // Redirect if not signed-in
   useEffect(() => {
@@ -548,6 +567,48 @@ export default function ProfilePage() {
     []
   );
 
+  /* ✅ NEW: load my products (ownerUid == uid) */
+  const loadMyProducts = useCallback(
+    async (uid: string, lim: number) => {
+      setProductsLoading(true);
+      setProductsNote(null);
+      try {
+        const productsQ = query(
+          collection(db, "products"),
+          where("ownerUid", "==", uid),
+          orderBy("createdAt", "desc"),
+          fsLimit(lim)
+        );
+        const pSnap = await getDocs(productsQ);
+        const list: MyProduct[] = [];
+        pSnap.forEach((d) => {
+          const P = d.data() as any;
+          list.push({
+            id: d.id,
+            title: P.title,
+            imageUrl: P.imageUrl,
+            affiliateUrl: P.affiliateUrl,
+            pricePhp: P.pricePhp ?? null,
+            category: P.category ?? null,
+            store: P.store ?? null,
+            createdAt: P.createdAt,
+          });
+        });
+        setProducts(list);
+      } catch (e) {
+        const err = e as FirebaseError;
+        console.warn("Products list error:", err?.code, err?.message);
+        setProducts([]);
+        setProductsNote(
+          "Products list may require a Firestore index: collection=products, where ownerUid==, order by createdAt desc."
+        );
+      } finally {
+        setProductsLoading(false);
+      }
+    },
+    []
+  );
+
   // Counts on mount
   useEffect(() => {
     (async () => {
@@ -583,6 +644,16 @@ export default function ProfilePage() {
       } finally {
         setStatsLoading(false);
       }
+
+      // ✅ NEW: product count
+      try {
+        const productsQ = query(collection(db, "products"), where("ownerUid", "==", user.uid));
+        const pCountSnap = await getCountFromServer(productsQ);
+        setProductCount(pCountSnap.data().count);
+      } catch (e) {
+        console.warn("Product count error:", (e as FirebaseError)?.message);
+        setProductCount(null);
+      }
     })();
   }, [user?.uid]);
 
@@ -597,10 +668,18 @@ export default function ProfilePage() {
     loadMyComments(user.uid, commentsLimit);
   }, [user?.uid, commentsLimit, loadMyComments]);
 
+  /* ✅ NEW: products list */
+  useEffect(() => {
+    if (!user?.uid) return;
+    loadMyProducts(user.uid, productsLimit);
+  }, [user?.uid, productsLimit, loadMyProducts]);
+
   const showStoriesViewAll =
     !storiesLoading && storiesLimit === INITIAL_LIMIT && ((storyCount ?? stories.length) > stories.length);
   const showCommentsViewAll =
     !commentsLoading && commentsLimit === INITIAL_LIMIT && ((commentCount ?? comments.length) > comments.length);
+  const showProductsViewAll =
+    !productsLoading && productsLimit === INITIAL_LIMIT && ((productCount ?? products.length) > products.length);
 
   /* ------------------------------ Deletions ----------------------------- */
   const deleteStory = useCallback(
@@ -617,10 +696,9 @@ export default function ProfilePage() {
       if (!ok) return;
 
       try {
-        // delete the story first (author is allowed)
         await deleteDoc(doc(db, "stories", sid));
 
-        // best-effort cleanup (ignore errors if rules block)
+        // best-effort cleanup
         try {
           await deleteSubcollection(collection(db, "stories", sid, "comments"));
         } catch {}
@@ -628,9 +706,7 @@ export default function ProfilePage() {
           await deleteSubcollection(collection(db, "stories", sid, "reactions"));
         } catch {}
 
-        // refresh list to keep it full
         await loadMyStories(user.uid, storiesLimit);
-
         if (storyCount != null) setStoryCount((c) => (c ?? 1) - 1);
         pushToast("success", "Story deleted.");
       } catch (e) {
@@ -655,10 +731,7 @@ export default function ProfilePage() {
 
       try {
         await deleteDoc(doc(db, "stories", sid, "comments", cid));
-
-        // refresh so recent/view-all stays packed
         await loadMyComments(user.uid, commentsLimit);
-
         if (commentCount != null) setCommentCount((c) => (c ?? 1) - 1);
         pushToast("success", "Comment deleted.");
       } catch (e) {
@@ -669,6 +742,32 @@ export default function ProfilePage() {
     [user?.uid, commentsLimit, loadMyComments, commentCount]
   );
 
+  /* ✅ NEW: delete product */
+  const deleteProduct = useCallback(
+    async (pid: string) => {
+      if (!user?.uid) return;
+
+      const ok = await askConfirm(setConfirm, {
+        title: "Delete product?",
+        message: "This product will be removed from the marketplace. This cannot be undone.",
+        confirmText: "Delete product",
+        danger: true,
+      });
+      if (!ok) return;
+
+      try {
+        await deleteDoc(doc(db, "products", pid));
+        await loadMyProducts(user.uid, productsLimit);
+        if (productCount != null) setProductCount((c) => (c ?? 1) - 1);
+        pushToast("success", "Product deleted.");
+      } catch (e) {
+        console.error("Delete product error:", e);
+        pushToast("error", "Failed to delete product. Please try again.");
+      }
+    },
+    [user?.uid, productsLimit, loadMyProducts, productCount]
+  );
+
   if (loading || !user) {
     return (
       <div className="section">
@@ -677,11 +776,14 @@ export default function ProfilePage() {
     );
   }
 
+  const peso = (n?: number | null) =>
+    typeof n === "number" ? n.toLocaleString("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }) : "—";
+
   return (
     <>
       <MetaHead
         title="My Profile • Pinoy Tambayan Hub"
-        description="Manage your display name, avatar, and see your stories and comments on Pinoy Tambayan Hub."
+        description="Manage your display name, avatar, and see your stories, comments, and products."
         path="/profile"
         robots="noindex,follow"
       />
@@ -908,6 +1010,80 @@ export default function ProfilePage() {
               )}
             </section>
           </div>
+
+          {/* ✅ My Products */}
+          <section className="mt-6">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h2 className="text-lg font-semibold">My Products</h2>
+              <Link href="/marketplace/new" className="text-sm text-blue-400 hover:underline">
+                Post a Product →
+              </Link>
+            </div>
+
+            {productsLoading ? (
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Skeleton className="h-28" />
+                <Skeleton className="h-28" />
+              </ul>
+            ) : products.length === 0 ? (
+              <p className="text-gray-400">
+                You haven’t posted any products yet.{" "}
+                <Link href="/marketplace/new" className="text-blue-400 underline">
+                  Add one now
+                </Link>
+                .
+              </p>
+            ) : (
+              <>
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {products.map((p) => (
+                    <li key={p.id} className="card p-3 relative">
+                      <button
+                        onClick={() => deleteProduct(p.id)}
+                        className="absolute right-2 top-2 z-10 rounded-md bg-red-600/90 text-white text-xs px-2 py-1 hover:bg-red-500"
+                        title="Delete product"
+                      >
+                        Delete
+                      </button>
+
+                      <a
+                        href={p.affiliateUrl}
+                        rel="nofollow sponsored noopener"
+                        target="_blank"
+                        className="flex gap-3"
+                        aria-label={`${p.title} – open affiliate link`}
+                      >
+                        <div className="w-24 h-16 overflow-hidden rounded">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={p.imageUrl} alt={p.title} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium line-clamp-2">{p.title}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            {p.category || "Others"} {p.store ? `· via ${p.store}` : ""}
+                          </div>
+                          <div className="text-sm mt-1">{peso(p.pricePhp ?? undefined)}</div>
+                        </div>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+
+                {showProductsViewAll && (
+                  <div className="mt-3">
+                    <button
+                      onClick={() => setProductsLimit(ALL_LIMIT)}
+                      className="text-sm text-blue-400 hover:underline"
+                    >
+                      View all my products ({productCount})
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {productsNote && <div className="mt-2 text-xs text-amber-300">{productsNote}</div>}
+          </section>
 
           <div className="h-px bg-gray-800 my-8" />
 
