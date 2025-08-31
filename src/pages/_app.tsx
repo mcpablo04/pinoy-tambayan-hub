@@ -97,10 +97,10 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
           {/* Mobile: small gap (sticky takes space in flow); Desktop: clear fixed header */}
           <main
-            className="flex-grow pt-4 md:pt-24 px-4 md:px-6 max-w-6xl mx-auto w-full"
-            data-scrollable
-            key={router.asPath}
-          >
+  className="flex-grow px-4 md:px-6 max-w-6xl mx-auto w-full"
+  key={router.asPath}
+>
+
             <Component {...pageProps} />
           </main>
 

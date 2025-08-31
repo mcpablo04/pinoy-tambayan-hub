@@ -40,6 +40,11 @@ html, body {
   padding-right: env(safe-area-inset-right);
 }
 
+/* Smooth compositing for fixed/sticky headers */
+.gpu-smooth { transform: translateZ(0); backface-visibility: hidden; will-change: transform; }
+@media (prefers-reduced-motion: reduce) { .gpu-smooth, .gpu-smooth * { transition: none !important; } }
+
+
 /* Next.js root should not constrain vertical overflow */
 #___next, #__next { min-height: 100%; overflow: visible; }
 

@@ -1,10 +1,11 @@
+// src/components/NavBar.tsx
 "use client";
 
 import Link from "next/link";
 import Image from "next/image";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useAuth } from "../context/AuthContext";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 const LINKS = [
   { label: "Home", href: "/", icon: "🏠" },
@@ -15,10 +16,8 @@ const LINKS = [
   { label: "Stories", href: "/stories", icon: "✍️" },
 ];
 
-const ICON_BAR_H = 48;      // h-12
-const HYSTERESIS = 16;      // dead-zone to prevent jitter (a bit wider)
-const EASE = "cubic-bezier(.22,.61,.36,1)"; // natural ease-out
-const DURATION_MS = 280;    // small but snappy
+const ICON_BAR_H = 48; // h-12
+const SAFE_TOP = "env(safe-area-inset-top, 0px)";
 
 export default function NavBar() {
   const router = useRouter();
@@ -26,189 +25,190 @@ export default function NavBar() {
 
   const photo = profile?.photoURL || user?.photoURL || null;
   const displayName = profile?.displayName || user?.displayName || "Profile";
-
   const isActive = (href: string) =>
     router.pathname === href || (href !== "/" && router.pathname.startsWith(href));
 
-  /* ---- measure brand row once (and on resize) ---- */
+  // --- measure brand row (expanded height)
   const brandRef = useRef<HTMLDivElement | null>(null);
-  const [brandH, setBrandH] = useState(56);     // sensible default
-  const [compact, setCompact] = useState(false);
+  const [brandH, setBrandH] = useState(56); // sensible default
 
   useLayoutEffect(() => {
-    let rafId = 0;
     const measure = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const h = Math.round(brandRef.current?.getBoundingClientRect().height || 56);
-        setBrandH(h);
-      });
+      const h = Math.round(brandRef.current?.getBoundingClientRect().height || 56);
+      if (h) setBrandH(h);
     };
-
     measure();
 
     let ro: ResizeObserver | null = null;
-    if (typeof window !== "undefined" && "ResizeObserver" in window && brandRef.current) {
-      ro = new ResizeObserver(() => measure());
+    if ("ResizeObserver" in window && brandRef.current) {
+      ro = new ResizeObserver(measure);
       ro.observe(brandRef.current);
     } else {
-      const onResize = () => measure();
-      window.addEventListener("resize", onResize);
-      return () => window.removeEventListener("resize", onResize);
+      window.addEventListener("resize", measure);
     }
-
     return () => {
       if (ro && brandRef.current) ro.unobserve(brandRef.current);
-      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", measure);
     };
   }, []);
 
-  /* ---- scroll with hysteresis + rAF (write only on state change) ---- */
+  // --- smooth progress 0..1 for brand slide (0 = fully visible, 1 = fully hidden)
+  const [progress, setProgress] = useState(0);
   useEffect(() => {
     let ticking = false;
-
-    const readAndUpdate = () => {
-      ticking = false;
-      const y = window.scrollY;
-
-      if (compact) {
-        // expand only when comfortably above threshold
-        if (y <= Math.max(0, brandH - HYSTERESIS)) setCompact(false);
-      } else {
-        // collapse only when comfortably below threshold
-        if (y >= brandH + HYSTERESIS) setCompact(true);
-      }
-    };
-
     const onScroll = () => {
-      if (!ticking) {
-        ticking = true;
-        requestAnimationFrame(readAndUpdate);
-      }
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const y = Math.max(0, window.scrollY || 0);
+        const p = brandH > 1 ? Math.min(1, y / brandH) : 1;
+        setProgress(p);
+        ticking = false;
+      });
     };
-
-    // initialize
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [brandH, compact]);
+  }, [brandH]);
 
-  const currentHeaderH = ICON_BAR_H + (compact ? 0 : brandH);
+  // Live header height: icon bar + remaining brand
+  const headerH = ICON_BAR_H + Math.round(brandH * (1 - progress));
 
-  /* ---------------- MOBILE: fixed two-row header (polished) ---------------- */
+  /* ---------------- MOBILE: brand slides & container collapses ---------------- */
   const MobileHeader = () => (
     <>
+      {/* Fixed header layer; height collapses with the brand; icon bar stays */}
       <div
         className="
-          md:hidden fixed inset-x-0 z-[70]
-          bg-gray-900/90 backdrop-blur supports-[backdrop-filter]:bg-gray-900/60
-          border-b border-gray-800
-          gpu-smooth
+          md:hidden fixed inset-x-0 top-0 z-[70]
+          bg-gray-900/85 backdrop-blur supports-[backdrop-filter]:bg-gray-900/60
+          border-b border-gray-800 gpu-smooth
         "
-        style={{ top: 0 }}
+        style={
+          {
+            // @ts-ignore — CSS custom props for perfect matching with spacer
+            "--safeTop": SAFE_TOP,
+            // @ts-ignore
+            "--hdrH": `calc(${headerH}px + var(--safeTop))`,
+            height: "var(--hdrH)",
+            paddingTop: "var(--safeTop)",
+            overflow: "hidden",           // clip the brand background as it collapses
+            transition: "height 160ms ease",
+            willChange: "height",
+          } as React.CSSProperties
+        }
       >
-        {/* Brand row – collapses smoothly with hysteresis */}
-        <div
-          ref={brandRef}
-          className={`
-            overflow-hidden
-            will-change-[max-height,opacity]
-            ${compact ? "max-h-0 opacity-0" : "max-h-[200px] opacity-100"}
-          `}
-          style={{
-            paddingTop: "env(safe-area-inset-top, 0px)",
-            transition: `max-height ${DURATION_MS}ms ${EASE}, opacity ${Math.max(
-              140,
-              DURATION_MS - 120
-            )}ms linear`,
-          }}
-        >
-          <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
-            <Link
-              href="/"
-              scroll
-              className="flex items-center gap-3 text-white font-bold"
-              aria-label="Pinoy Tambayan Hub"
-            >
-              <Image
-                src="/brand/pt-hub-logo.png"
-                alt="Pinoy Tambayan Hub"
-                width={36}
-                height={36}
-                priority
-                className="h-9 w-9 rounded-md object-contain"
-              />
-              <span className="text-xl">Pinoy Tambayan Hub</span>
-            </Link>
-            <span className="hidden" aria-hidden="true" />
+        {/* Inner box exactly headerH tall (excl. safeTop) */}
+        <div className="relative" style={{ height: headerH }}>
+          {/* BRAND ROW — slides up and fades out */}
+          <div
+            ref={brandRef}
+            className="absolute left-0 right-0"
+            style={{
+              top: 0,
+              transform: `translate3d(0, ${-progress * brandH}px, 0)`,
+              transition: "transform 160ms linear, opacity 140ms linear",
+              opacity: 1 - progress,
+              willChange: "transform, opacity",
+            }}
+          >
+            <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
+              <Link
+                href="/"
+                scroll
+                className="flex items-center gap-3 text-white font-bold"
+                aria-label="Pinoy Tambayan Hub"
+              >
+                <Image
+                  src="/brand/pt-hub-logo.png"
+                  alt="Pinoy Tambayan Hub"
+                  width={36}
+                  height={36}
+                  priority
+                  className="h-9 w-9 rounded-md object-contain"
+                />
+                <span className="text-xl">Pinoy Tambayan Hub</span>
+              </Link>
+              <span className="hidden" aria-hidden="true" />
+            </div>
           </div>
-        </div>
 
-        {/* Icon bar – always visible */}
-        <div className="h-12 border-t border-gray-800">
-          <div className="max-w-6xl mx-auto px-2 h-full flex items-center justify-between">
-            <nav className="flex-1" aria-label="Primary">
-              <ul className="flex gap-1 overflow-x-auto no-scrollbar">
-                {LINKS.map(({ label, href, icon }) => {
-                  const active = isActive(href);
-                  return (
-                    <li key={href} className="shrink-0">
-                      <Link
-                        href={href}
-                        scroll
-                        className={`grid place-items-center w-12 h-10 rounded-lg transition
-                          ${active ? "bg-gray-800 text-white" : "text-gray-200 hover:bg-gray-800/60"}
-                        `}
-                        aria-label={label}
-                        aria-current={active ? "page" : undefined}
-                      >
-                        <span className="text-xl leading-none">{icon}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </nav>
+          {/* ICON BAR — pinned to bottom; always visible */}
+          <div
+            className="absolute left-0 right-0 border-t border-gray-800"
+            style={{ bottom: 0, height: ICON_BAR_H }}
+          >
+            <div className="max-w-6xl mx-auto px-2 h-full flex items-center justify-between">
+              <nav className="flex-1" aria-label="Primary">
+                <ul className="flex gap-1 overflow-x-auto no-scrollbar">
+                  {LINKS.map(({ label, href, icon }) => {
+                    const active = isActive(href);
+                    return (
+                      <li key={href} className="shrink-0">
+                        <Link
+                          href={href}
+                          scroll
+                          className={`grid place-items-center w-12 h-10 rounded-lg transition
+                            ${active ? "bg-gray-800 text-white" : "text-gray-200 hover:bg-gray-800/60"}
+                          `}
+                          aria-label={label}
+                          aria-current={active ? "page" : undefined}
+                        >
+                          <span className="text-xl leading-none">{icon}</span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </nav>
 
-            <div className="ml-2 pl-2 border-l border-gray-700">
-              {user ? (
-                <Link href="/profile" scroll aria-label="Profile" className="block">
-                  {photo ? (
-                    <div className="avatar avatar-sm">
-                      <img src={photo} alt="avatar" />
-                    </div>
-                  ) : (
-                    <div className="avatar avatar-sm grid place-items-center text-sm text-gray-300">👤</div>
-                  )}
-                </Link>
-              ) : (
-                <Link
-                  href="/login"
-                  scroll
-                  className="inline-flex items-center justify-center h-9 px-3 rounded-full bg-blue-600 text-white text-xs font-semibold hover:bg-blue-500"
-                >
-                  Login
-                </Link>
-              )}
+              <div className="ml-2 pl-2 border-l border-gray-700">
+                {user ? (
+                  <Link href="/profile" scroll aria-label="Profile" className="block">
+                    {photo ? (
+                      <div className="avatar avatar-sm">
+                        <img src={photo} alt="avatar" />
+                      </div>
+                    ) : (
+                      <div className="avatar avatar-sm grid place-items-center text-sm text-gray-300">👤</div>
+                    )}
+                  </Link>
+                ) : (
+                  <Link
+                    href="/login"
+                    scroll
+                    className="inline-flex items-center justify-center h-9 px-3 rounded-full bg-blue-600 text-white text-xs font-semibold hover:bg-blue-500"
+                  >
+                    Login
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Spacer – height also transitions so content never jumps */}
+      {/* Spacer matches header total height (incl. safeTop) so content never jumps */}
       <div
         className="md:hidden"
-        style={{
-          height: currentHeaderH,
-          transition: `height ${DURATION_MS}ms ${EASE}`,
-        }}
+        style={
+          {
+            // @ts-ignore
+            "--safeTop": SAFE_TOP,
+            // @ts-ignore
+            "--hdrH": `calc(${headerH}px + var(--safeTop))`,
+            height: "var(--hdrH)",
+            transition: "height 160ms ease",
+            willChange: "height",
+          } as React.CSSProperties
+        }
       />
     </>
   );
 
   /* ---------------- DESKTOP: fixed header (unchanged) ---------------- */
   const DesktopHeader = () => (
-    <header className="hidden md:block fixed inset-x-0 top-0 z-50 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800 gpu-smooth">
+    <header className="hidden md:block fixed inset-x-0 top-0 z-50 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800">
       <div className="max-w-6xl mx-auto flex items-center justify-between p-4">
         <Link
           href="/"
