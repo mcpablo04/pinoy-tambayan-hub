@@ -8,6 +8,9 @@ import { useEffect, useMemo, useState } from "react";
 import ChatBox from "../components/ChatBox";
 import { usePlayer } from "../context/PlayerContext";
 import { STATIONS } from "../data/stations";
+// at top with other imports
+import MetaHead from "../components/MetaHead";
+
 
 // 🔥 Firestore (adjust path if your db export lives elsewhere)
 import { db } from "../lib/firebase";
@@ -126,50 +129,31 @@ export default function Home() {
   return (
     <>
       {/* SEO */}
-      <Head>
-        <title>Pinoy Tambayan Hub — OPM Radio, Weather, Events & News</title>
-        <meta
-          name="description"
-          content="Listen to Pinoy radio online, check PH weather, browse events and stories, shop community marketplace picks, and hang out with the tambayan."
-        />
-        <link rel="canonical" href="https://pinoytambayanhub.com/" />
+      {/* replace the whole <Head>…</Head> block with this */}
+<MetaHead
+  title="Pinoy Tambayan Hub — OPM Radio, Weather, Events & News"
+  description="Listen to Pinoy radio online, check PH weather, browse events and stories, shop community marketplace picks, and hang out with the tambayan."
+  image="/brand/og-cover.png"
+/>
 
-        {/* Social previews (overrides the defaults in _document) */}
-        <meta property="og:title" content="Pinoy Tambayan Hub — OPM Radio, Weather, Events & News" />
-        <meta
-          property="og:description"
-          content="Listen to Pinoy radio, check weather, read stories, and discover marketplace picks — all in one place."
-        />
-        <meta property="og:image" content="/brand/og-cover.png" />
-        <meta property="og:url" content="https://pinoytambayanhub.com/" />
-        <meta property="og:type" content="website" />
+{/* keep your SearchAction JSON-LD (nice touch!) */}
+<script
+  type="application/ld+json"
+  dangerouslySetInnerHTML={{
+    __html: JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "Pinoy Tambayan Hub",
+      url: "https://pinoytambayanhub.com/",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: "https://pinoytambayanhub.com/radio?q={search_term_string}",
+        "query-input": "required name=search_term_string",
+      },
+    }),
+  }}
+/>
 
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Pinoy Tambayan Hub — OPM Radio, Weather, Events & News" />
-        <meta
-          name="twitter:description"
-          content="OPM radio, weather, stories, and marketplace — all in one place."
-        />
-        <meta name="twitter:image" content="/brand/og-cover.png" />
-
-        {/* Basic JSON-LD */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "WebSite",
-              name: "Pinoy Tambayan Hub",
-              url: "https://pinoytambayanhub.com/",
-              potentialAction: {
-                "@type": "SearchAction",
-                target: "https://pinoytambayanhub.com/radio?q={search_term_string}",
-                "query-input": "required name=search_term_string",
-              },
-            }),
-          }}
-        />
-      </Head>
 
       {/* HERO */}
       <section className="section bg-darkbg text-lighttext scroll-mt-24 md:scroll-mt-28">
