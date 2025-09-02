@@ -1,6 +1,7 @@
 // pages/marketplace/index.tsx
 "use client";
 
+import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, orderBy, query, deleteDoc, doc } from "firebase/firestore";
@@ -96,9 +97,7 @@ function ConfirmDialog({ state, setState }: { state: ConfirmState; setState: (s:
             </button>
             <button
               onClick={() => close(true)}
-              className={`px-4 py-2 rounded-md text-white ${
-                state.danger ? "bg-red-600 hover:bg-red-500" : "bg-blue-600 hover:bg-blue-500"
-              }`}
+              className={`px-4 py-2 rounded-md text-white ${state.danger ? "bg-red-600 hover:bg-red-500" : "bg-blue-600 hover:bg-blue-500"}`}
             >
               {state.confirmText ?? "Confirm"}
             </button>
@@ -117,13 +116,14 @@ function askConfirm(setState: (s: ConfirmState) => void, opts: Omit<ConfirmState
 type Product = {
   id: string;
   title: string;
-  category?: string;
+  slug?: string | null;
+  category?: string | null;
   pricePhp?: number | null;
   rating?: number | null;
   store?: string | null;
   imageUrl: string;
   affiliateUrl: string;
-  blurb?: string;
+  blurb?: string | null;
   ownerUid: string;
   ownerName?: string | null;
   complianceAck?: boolean;
@@ -136,8 +136,19 @@ const peso = (n?: number | null) =>
     ? n.toLocaleString("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 })
     : "—";
 
-// admin email from env (case-insensitive)
 const ADMIN_EMAIL = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase();
+const SITE = "https://pinoytambayanhub.com";
+
+function slugify(input: string) {
+  return (input || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 80);
+}
 
 export default function MarketplacePage() {
   const { user } = useAuth();
@@ -172,16 +183,11 @@ export default function MarketplacePage() {
   );
 
   const filtered = useMemo(() => {
-    const norm = (s: string) =>
-      (s || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+    const norm = (s: string) => (s || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
     const qq = norm(qStr.trim());
     let out = items.filter((p) => {
       const inCat = cat === "All" || p.category === cat;
-      const inQ =
-        !qq ||
-        [p.title, p.category, p.store, p.blurb, p.ownerName].some((f) =>
-          norm(f || "").includes(qq)
-        );
+      const inQ = !qq || [p.title, p.category, p.store, p.blurb, p.ownerName].some((f) => norm(f || "").includes(qq));
       const inPrice = maxPrice ? (p.pricePhp ?? Number.MAX_SAFE_INTEGER) <= maxPrice : true;
       return inCat && inQ && inPrice;
     });
@@ -193,12 +199,20 @@ export default function MarketplacePage() {
         out = out.slice().sort((a, b) => (b.pricePhp ?? -1) - (a.pricePhp ?? -1));
         break;
       default:
-        out = out
-          .slice()
-          .sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+        out = out.slice().sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
     }
     return out;
   }, [items, qStr, cat, sort, maxPrice]);
+
+  // cards w/ internal detail href for SEO
+  const productCards = useMemo(
+    () =>
+      filtered.map((p) => {
+        const pretty = p.slug && p.slug.length ? p.slug : slugify(p.title);
+        return { ...p, href: `/marketplace/p/${p.id}-${pretty}` };
+      }),
+    [filtered]
+  );
 
   async function onDelete(id: string) {
     if (!user) {
@@ -222,6 +236,22 @@ export default function MarketplacePage() {
     }
   }
 
+  // JSON-LD (ItemList) for the cards we render
+  const jsonLd = useMemo(() => {
+    const itemsForLd = productCards.slice(0, 12).map((p, idx) => ({
+      "@type": "ListItem",
+      position: idx + 1,
+      url: `${SITE}${p.href}`,
+      name: p.title,
+      image: p.imageUrl,
+    }));
+    return {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      itemListElement: itemsForLd,
+    };
+  }, [productCards]);
+
   return (
     <>
       <MetaHead
@@ -229,6 +259,9 @@ export default function MarketplacePage() {
         description="Community-submitted affiliate picks for Pinoys — browse, search, and filter."
         path="/marketplace"
       />
+      <Head>
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      </Head>
 
       {/* Confirm + Toasts */}
       <ConfirmDialog state={confirm} setState={setConfirm} />
@@ -255,9 +288,7 @@ export default function MarketplacePage() {
         <section className="card mb-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="md:col-span-2">
-              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
-                Search
-              </label>
+              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">Search</label>
               <input
                 value={qStr}
                 onChange={(e) => setQStr(e.target.value)}
@@ -266,9 +297,7 @@ export default function MarketplacePage() {
               />
             </div>
             <div>
-              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
-                Category
-              </label>
+              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">Category</label>
               <select value={cat} onChange={(e) => setCat(e.target.value)} className="input">
                 {categories.map((c) => (
                   <option key={c} value={c}>
@@ -278,30 +307,20 @@ export default function MarketplacePage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
-                Sort
-              </label>
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as any)}
-                className="input"
-              >
+              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">Sort</label>
+              <select value={sort} onChange={(e) => setSort(e.target.value as any)} className="input">
                 <option value="new">Newest</option>
                 <option value="price-asc">Price: Low → High</option>
                 <option value="price-desc">Price: High → Low</option>
               </select>
             </div>
             <div className="md:col-span-2">
-              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
-                Max Price (PHP)
-              </label>
+              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">Max Price (PHP)</label>
               <input
                 type="number"
                 min={0}
                 value={maxPrice ?? ""}
-                onChange={(e) =>
-                  setMaxPrice(e.target.value ? Math.max(0, Number(e.target.value)) : undefined)
-                }
+                onChange={(e) => setMaxPrice(e.target.value ? Math.max(0, Number(e.target.value)) : undefined)}
                 className="input"
                 placeholder="e.g. 1500"
               />
@@ -310,16 +329,15 @@ export default function MarketplacePage() {
         </section>
 
         {/* Results */}
-        {filtered.length === 0 ? (
-          <div className="card text-center text-neutral-300">
-            No results. Try different keywords or filters.
-          </div>
+        {productCards.length === 0 ? (
+          <div className="card text-center text-neutral-300">No results. Try different keywords or filters.</div>
         ) : (
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((p) => {
+            {productCards.map((p) => {
               const canDelete = !!user && (isAdmin || p.ownerUid === user.uid);
               return (
                 <li key={p.id} className="card card-hover relative">
+                  {/* Delete button (owner/admin only) */}
                   {canDelete && (
                     <button
                       type="button"
@@ -331,43 +349,40 @@ export default function MarketplacePage() {
                     </button>
                   )}
 
-                  <a
-                    href={p.affiliateUrl}
-                    rel="nofollow sponsored noopener"
-                    target="_blank"
-                    className="block"
-                    aria-label={`${p.title} – open affiliate link`}
-                  >
+                  {/* Card links to detail page for SEO */}
+                  <Link href={p.href} className="block" aria-label={`${p.title} – details`}>
                     {p.imageUrl && (
                       <div className="mb-3 overflow-hidden rounded-md">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={p.imageUrl}
-                          alt={p.title}
-                          className="aspect-[16/10] w-full object-cover"
-                          loading="lazy"
-                        />
+                        <img src={p.imageUrl} alt={p.title} className="aspect-[16/10] w-full object-cover" loading="lazy" />
                       </div>
                     )}
                     <div className="space-y-2">
                       <h3 className="text-base font-semibold leading-snug line-clamp-2">{p.title}</h3>
                       <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-300">
-                        <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs">
-                          {p.category || "Others"}
-                        </span>
+                        <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs">{p.category || "Others"}</span>
                         {p.store && <span className="text-xs text-neutral-400">via {p.store}</span>}
                       </div>
-                      {p.blurb && <p className="text-sm text-neutral-300">{p.blurb}</p>}
-                      <div className="mt-1 flex items-center justify-between">
-                        <div className="text-lg font-semibold">{peso(p.pricePhp ?? undefined)}</div>
-                        <div className="text-xs text-blue-400 underline-offset-4">Check price →</div>
-                      </div>
-                      <p className="mt-2 text-[11px] leading-snug text-neutral-500">
-                        Affiliate link (from the submitter or this site). Price/availability may change—verify on
-                        the merchant site.
-                      </p>
+                      {p.blurb && <p className="text-sm text-neutral-300 line-clamp-2">{p.blurb}</p>}
                     </div>
-                  </a>
+                  </Link>
+
+                  {/* Footer: price + affiliate CTA */}
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="text-lg font-semibold">{peso(p.pricePhp ?? undefined)}</div>
+                    <a
+                      href={p.affiliateUrl}
+                      rel="nofollow sponsored noopener"
+                      target="_blank"
+                      className="text-xs text-blue-400 underline-offset-4"
+                    >
+                      Check price →
+                    </a>
+                  </div>
+
+                  <p className="mt-2 text-[11px] leading-snug text-neutral-500">
+                    Affiliate link (from the submitter or this site). Price/availability may change—verify on the merchant site.
+                  </p>
 
                   <div className="mt-2 text-[11px] text-neutral-500">Posted by {p.ownerName || "User"}</div>
                 </li>

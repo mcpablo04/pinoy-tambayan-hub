@@ -4,12 +4,64 @@
 import Link from "next/link";
 import Image from "next/image";
 import Head from "next/head";
+import { useEffect, useMemo, useState } from "react";
 import ChatBox from "../components/ChatBox";
 import { usePlayer } from "../context/PlayerContext";
 import { STATIONS } from "../data/stations";
 
+// 🔥 Firestore (adjust path if your db export lives elsewhere)
+import { db } from "../lib/firebase";
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  limit as fsLimit,
+  query,
+  type Timestamp,
+} from "firebase/firestore";
+
+/* ===================== helpers ===================== */
 const byId = (id: string) => STATIONS.find((s) => s.id === id);
 
+function slugify(input: string) {
+  return (input || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 80);
+}
+
+const peso = (n?: number | null) =>
+  typeof n === "number"
+    ? n.toLocaleString("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 })
+    : "—";
+
+/* ===================== types ===================== */
+type Product = {
+  id: string;
+  title: string;
+  slug?: string | null;
+  category?: string | null;
+  pricePhp?: number | null;
+  store?: string | null;
+  imageUrl: string;
+  affiliateUrl: string;
+  blurb?: string | null;
+  ownerName?: string | null;
+  createdAt?: Timestamp | { seconds?: number } | null;
+};
+
+type Story = {
+  id: string;
+  title: string;
+  slug?: string | null;
+  createdAt?: Timestamp | { seconds?: number } | null;
+};
+
+/* ===================== featured lists ===================== */
 const FEATURED_IDS = [
   "love-radio",
   "easy-rock",
@@ -24,6 +76,53 @@ const FEATURED_IDS = [
 export default function Home() {
   const { setShowUI } = usePlayer();
 
+  const [products, setProducts] = useState<Product[]>([]);
+  const [stories, setStories] = useState<Story[]>([]);
+
+  useEffect(() => {
+    // latest 6 marketplace products
+    const pq = query(collection(db, "products"), orderBy("createdAt", "desc"), fsLimit(6));
+    const unsubP = onSnapshot(pq, (snap) => {
+      const arr: Product[] = [];
+      snap.forEach((d) => arr.push({ id: d.id, ...(d.data() as any) }));
+      setProducts(arr);
+    });
+
+    // latest 4 stories
+    const sq = query(collection(db, "stories"), orderBy("createdAt", "desc"), fsLimit(4));
+    const unsubS = onSnapshot(sq, (snap) => {
+      const arr: Story[] = [];
+      snap.forEach((d) => arr.push({ id: d.id, ...(d.data() as any) }));
+      setStories(arr);
+    });
+
+    return () => {
+      unsubP();
+      unsubS();
+    };
+  }, []);
+
+  const productCards = useMemo(
+    () =>
+      products.map((p) => {
+        const pretty = p.slug && p.slug.length ? p.slug : slugify(p.title);
+        return {
+          ...p,
+          href: `/marketplace/p/${p.id}-${pretty}`,
+        };
+      }),
+    [products]
+  );
+
+  const storyLinks = useMemo(
+    () =>
+      stories.map((s) => ({
+        ...s,
+        href: `/stories/${s.slug && s.slug.length ? s.slug : s.id}`,
+      })),
+    [stories]
+  );
+
   return (
     <>
       {/* SEO */}
@@ -31,7 +130,7 @@ export default function Home() {
         <title>Pinoy Tambayan Hub — OPM Radio, Weather, Events & News</title>
         <meta
           name="description"
-          content="Listen to Pinoy radio online, check PH weather, browse events, and hang out with the community. Pinoy Tambayan Hub brings OPM hits and tambayan vibes in one place."
+          content="Listen to Pinoy radio online, check PH weather, browse events and stories, shop community marketplace picks, and hang out with the tambayan."
         />
         <link rel="canonical" href="https://pinoytambayanhub.com/" />
 
@@ -39,7 +138,7 @@ export default function Home() {
         <meta property="og:title" content="Pinoy Tambayan Hub — OPM Radio, Weather, Events & News" />
         <meta
           property="og:description"
-          content="Listen to Pinoy radio online, check PH weather, browse events, and hang out with the community."
+          content="Listen to Pinoy radio, check weather, read stories, and discover marketplace picks — all in one place."
         />
         <meta property="og:image" content="/brand/og-cover.png" />
         <meta property="og:url" content="https://pinoytambayanhub.com/" />
@@ -49,11 +148,11 @@ export default function Home() {
         <meta name="twitter:title" content="Pinoy Tambayan Hub — OPM Radio, Weather, Events & News" />
         <meta
           name="twitter:description"
-          content="Listen to Pinoy radio, check weather, and browse events — all in one place."
+          content="OPM radio, weather, stories, and marketplace — all in one place."
         />
         <meta name="twitter:image" content="/brand/og-cover.png" />
 
-        {/* Optional JSON-LD (basic) */}
+        {/* Basic JSON-LD */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -77,11 +176,9 @@ export default function Home() {
         <div className="container-page">
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
-              <h1 className="page-title text-blue-400">
-                Welcome to Pinoy Tambayan Hub
-              </h1>
+              <h1 className="page-title text-blue-400">Welcome to Pinoy Tambayan Hub</h1>
               <p className="mt-3 text-[15px] sm:text-base text-gray-300 max-w-prose">
-                Your daily dose of OPM hits, live radio, and tambayan vibes — all in one place.
+                Your daily dose of OPM hits, live radio, tambayan stories, and community marketplace picks.
               </p>
               <div className="mt-5 flex gap-3 flex-wrap">
                 <Link
@@ -92,12 +189,8 @@ export default function Home() {
                 >
                   Start Listening
                 </Link>
-                <Link
-                  href="/weather"
-                  prefetch={false}
-                  className="btn btn-ghost px-5 py-3 text-sm sm:text-base"
-                >
-                  Check Weather
+                <Link href="/marketplace" prefetch={false} className="btn btn-ghost px-5 py-3 text-sm sm:text-base">
+                  Shop Picks
                 </Link>
               </div>
             </div>
@@ -197,6 +290,93 @@ export default function Home() {
         </div>
       </section>
 
+      {/* FEATURED MARKETPLACE */}
+      <section className="section">
+        <div className="container-page">
+          <div className="flex items-baseline justify-between gap-2 mb-3">
+            <h2 className="page-title mb-0">Featured Marketplace</h2>
+            <Link href="/marketplace" className="text-blue-400 hover:underline">
+              See all →
+            </Link>
+          </div>
+
+          {productCards.length === 0 ? (
+            <div className="card text-center text-neutral-300">No products yet. Be the first to post!</div>
+          ) : (
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {productCards.map((p) => (
+                <li key={p.id} className="card card-hover">
+                  <Link href={p.href} className="block" aria-label={`${p.title} – details`}>
+                    {p.imageUrl && (
+                      <div className="mb-3 overflow-hidden rounded-md">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={p.imageUrl}
+                          alt={p.title}
+                          className="aspect-[16/10] w-full object-cover"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
+                    <h3 className="text-base font-semibold leading-snug line-clamp-2">{p.title}</h3>
+                  </Link>
+
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-300">
+                      <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs">
+                        {p.category || "Others"}
+                      </span>
+                      {p.store && <span className="text-xs text-neutral-400">via {p.store}</span>}
+                    </div>
+                    {p.blurb && <p className="text-sm text-neutral-300 line-clamp-2">{p.blurb}</p>}
+                    <div className="mt-1 flex items-center justify-between">
+                      <div className="text-lg font-semibold">{peso(p.pricePhp ?? undefined)}</div>
+                      <a
+                        href={(p as any).affiliateUrl}
+                        rel="nofollow sponsored noopener"
+                        target="_blank"
+                        className="text-xs text-blue-400 underline-offset-4"
+                      >
+                        Check price →
+                      </a>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      {/* LATEST STORIES */}
+      <section className="section">
+        <div className="container-page">
+          <div className="flex items-baseline justify-between gap-2 mb-3">
+            <h2 className="page-title mb-0">Latest Stories</h2>
+            <Link href="/stories" className="text-blue-400 hover:underline">
+              Browse stories →
+            </Link>
+          </div>
+
+          {storyLinks.length === 0 ? (
+            <div className="card text-center text-neutral-300">No stories yet. Write the first one!</div>
+          ) : (
+            <ul className="grid sm:grid-cols-2 gap-3">
+              {storyLinks.map((s) => (
+                <li key={s.id} className="card card-hover p-4">
+                  <h3 className="font-semibold">
+                    <Link href={s.href} className="hover:underline">
+                      {s.title}
+                    </Link>
+                  </h3>
+                  <p className="mt-1 text-xs text-gray-400">New on the tambayan</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
       {/* QUICK WEATHER TEASER */}
       <section className="section">
         <div className="container-page">
@@ -248,9 +428,7 @@ export default function Home() {
             </details>
             <details className="rounded-lg bg-gray-800/60 border border-white/10 p-4">
               <summary className="cursor-pointer font-semibold">Can I report issues?</summary>
-              <p className="mt-2 text-gray-300 text-sm">
-                Yes, please! Use the Contact page to report broken streams or bugs.
-              </p>
+              <p className="mt-2 text-gray-300 text-sm">Yes! Use the Contact page to report broken streams or bugs.</p>
             </details>
           </div>
         </div>
@@ -267,13 +445,7 @@ export default function Home() {
               method="POST"
               className="mt-3 flex flex-col sm:flex-row gap-2"
             >
-              <input
-                type="email"
-                name="email"
-                required
-                placeholder="you@email.com"
-                className="input"
-              />
+              <input type="email" name="email" required placeholder="you@email.com" className="input" />
               <button type="submit" className="btn btn-primary">
                 Subscribe
               </button>
