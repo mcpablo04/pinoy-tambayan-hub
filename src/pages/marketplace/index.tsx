@@ -326,10 +326,10 @@ export default function MarketplacePage() {
   return (
     <>
       <MetaHead
-        title="Marketplace • Pinoy Tambayan Hub"
-        description="Community-submitted affiliate picks for Pinoys — browse, search, and filter."
-        path="/marketplace"
-      />
+  title="Marketplace • Pinoy Tambayan Hub"
+  description="Community-submitted affiliate picks for Pinoys — browse, search, and filter."
+/>
+
       <Head>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       </Head>

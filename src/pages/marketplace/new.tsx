@@ -141,11 +141,11 @@ export default function NewProductPage() {
   return (
     <>
       <MetaHead
-        title="Submit a Product • Marketplace"
-        description="Post your affiliate pick for the Pinoy Tambayan Hub marketplace."
-        path="/marketplace/new"
-        robots="noindex,follow"
-      />
+  title="Submit a Product • Marketplace"
+  description="Post your affiliate pick for the Pinoy Tambayan Hub marketplace."
+  noindex
+/>
+
 
       <ToastViewport toasts={toasts} onClose={popToast} />
 

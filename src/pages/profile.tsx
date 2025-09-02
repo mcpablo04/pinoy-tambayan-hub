@@ -782,11 +782,10 @@ export default function ProfilePage() {
   return (
     <>
       <MetaHead
-        title="My Profile • Pinoy Tambayan Hub"
-        description="Manage your display name, avatar, and see your stories, comments, and products."
-        path="/profile"
-        robots="noindex,follow"
-      />
+  title="My Profile • Pinoy Tambayan Hub"
+  description="Manage your display name, avatar, and see your stories, comments, and products."
+  noindex
+/>
 
       <section className="section">
         <div className="container-page max-w-5xl">

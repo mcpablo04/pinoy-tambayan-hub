@@ -1,15 +1,13 @@
 // src/pages/login.tsx
 "use client";
 
-import Head from "next/head";
 import { useEffect, useState, FormEvent, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { useAuth } from "../context/AuthContext";
 import { auth } from "../firebase/clientApp";
-
-const SITE_URL = "https://pinoytambayanhub.com"; // update if different
+import MetaHead from "../components/MetaHead";
 
 const friendly = (code: string) => {
   switch (code) {
@@ -30,14 +28,7 @@ const friendly = (code: string) => {
 };
 
 export default function LoginPage() {
-  const {
-    signInGoogle,
-    registerEmail,
-    signInEmail,
-    loading,
-    user,
-  } = useAuth();
-
+  const { signInGoogle, registerEmail, signInEmail, loading, user } = useAuth();
   const router = useRouter();
 
   // bounce if already signed in
@@ -91,8 +82,7 @@ export default function LoginPage() {
     }
   };
 
-  // ---- SEO bits ----
-  const canonical = `${SITE_URL}/login`;
+  // SEO text (MetaHead auto-builds canonical from current route)
   const metaTitle = useMemo(
     () => (mode === "login" ? "Sign in | Pinoy Tambayan Hub" : "Create account | Pinoy Tambayan Hub"),
     [mode]
@@ -104,25 +94,7 @@ export default function LoginPage() {
 
   return (
     <>
-      {/* SEO */}
-      <Head>
-        <title>{metaTitle}</title>
-        <meta name="description" content={metaDesc} />
-        <link rel="canonical" href={canonical} />
-        {/* Auth pages generally shouldn't be indexed */}
-        <meta name="robots" content="noindex,nofollow" />
-
-        <meta property="og:title" content={metaTitle} />
-        <meta property="og:description" content={metaDesc} />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content={canonical} />
-        <meta property="og:image" content="/brand/og-cover.png" />
-
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={metaTitle} />
-        <meta name="twitter:description" content={metaDesc} />
-        <meta name="twitter:image" content="/brand/og-cover.png" />
-      </Head>
+      <MetaHead title={metaTitle} description={metaDesc} noindex />
 
       <section className="section">
         <div className="container-page max-w-md">
@@ -137,7 +109,7 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          {/* Segmented control (very clickable) */}
+          {/* Segmented control */}
           <div className="mb-5 inline-flex rounded-lg border border-white/10 overflow-hidden" role="tablist" aria-label="Auth mode">
             <button
               type="button"
@@ -145,9 +117,7 @@ export default function LoginPage() {
               role="tab"
               aria-selected={mode === "login"}
               className={`px-4 py-2 text-sm font-medium transition ${
-                mode === "login"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white/5 text-gray-200 hover:bg-white/10"
+                mode === "login" ? "bg-blue-600 text-white" : "bg-white/5 text-gray-200 hover:bg-white/10"
               }`}
             >
               Sign in
@@ -158,19 +128,15 @@ export default function LoginPage() {
               role="tab"
               aria-selected={mode === "register"}
               className={`px-4 py-2 text-sm font-medium transition border-l border-white/10 ${
-                mode === "register"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white/5 text-gray-200 hover:bg-white/10"
+                mode === "register" ? "bg-blue-600 text-white" : "bg-white/5 text-gray-200 hover:bg-white/10"
               }`}
             >
               Register
             </button>
           </div>
 
-          {/* Little subtitle */}
-          <p className="text-gray-400 mb-4 text-sm">
-            Continue with Google or use your email.
-          </p>
+          {/* Subtitle */}
+          <p className="text-gray-400 mb-4 text-sm">Continue with Google or use your email.</p>
 
           {/* Alerts */}
           {err && (
@@ -239,24 +205,12 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn btn-primary w-full"
-              >
-                {loading
-                  ? "Please wait…"
-                  : mode === "login"
-                  ? "Sign in with Email"
-                  : "Register with Email"}
+              <button type="submit" disabled={loading} className="btn btn-primary w-full">
+                {loading ? "Please wait…" : mode === "login" ? "Sign in with Email" : "Register with Email"}
               </button>
 
               {mode === "login" && (
-                <button
-                  type="button"
-                  onClick={resetPassword}
-                  className="text-sm text-blue-400 hover:underline"
-                >
+                <button type="button" onClick={resetPassword} className="text-sm text-blue-400 hover:underline">
                   Forgot password?
                 </button>
               )}
@@ -281,25 +235,19 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Bottom links (clickable) */}
+          {/* Bottom links */}
           <div className="mt-4 text-sm text-gray-400">
             {mode === "login" ? (
               <>
                 Don’t have an account?{" "}
-                <button
-                  className="text-blue-400 hover:underline"
-                  onClick={() => setMode("register")}
-                >
+                <button className="text-blue-400 hover:underline" onClick={() => setMode("register")}>
                   Register
                 </button>
               </>
             ) : (
               <>
                 Already have an account?{" "}
-                <button
-                  className="text-blue-400 hover:underline"
-                  onClick={() => setMode("login")}
-                >
+                <button className="text-blue-400 hover:underline" onClick={() => setMode("login")}>
                   Sign in
                 </button>
               </>
