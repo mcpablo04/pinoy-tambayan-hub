@@ -3,7 +3,7 @@
 
 import Head from "next/head";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Song = { title: string; artist: string; year?: number };
 
@@ -35,6 +35,11 @@ export default function KaraokeRoulette() {
   const title = "Karaoke Roulette — Pinoy Tambayan Hub";
   const description =
     "Spin a random OPM hit to sing! Family-friendly karaoke idea generator for tambayan nights.";
+
+  // snap to the real top on mount
+  useEffect(() => {
+    try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+  }, []);
 
   const searchUrl = useMemo(() => {
     if (!current) return "#";
@@ -72,50 +77,54 @@ export default function KaraokeRoulette() {
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       </Head>
 
-      <section className="pt-20 max-w-3xl mx-auto px-4 text-lighttext">
-        {/* Back to Tools */}
-        <div className="mb-3">
-          <Link href="/tools" className="text-sm text-gray-400 hover:text-blue-400">
-            ← Back to Tools
-          </Link>
-        </div>
+      <section className="section">
+        <div className="container-page max-w-3xl text-lighttext">
+          {/* Back to Tools */}
+          <div className="mb-3">
+            <Link href="/tools" className="text-sm text-gray-400 hover:text-blue-400">
+              ← Back to Tools
+            </Link>
+          </div>
 
-        <h1 className="text-3xl font-bold mb-3">🎤 Karaoke Roulette</h1>
-        <p className="text-gray-400 mb-6">
-          Spin to get a random OPM hit to sing! We only suggest titles/artists and send you to a YouTube search
-          for karaoke versions — no copyrighted media embedded.
-        </p>
+          <h1 className="page-title">🎤 Karaoke Roulette</h1>
+          <p className="text-gray-400 mb-6">
+            Spin to get a random OPM hit to sing! We only suggest titles/artists and send you to a YouTube search
+            for karaoke versions — no copyrighted media embedded.
+          </p>
 
-        <div className="card space-y-5">
-          <button
-            onClick={() => setCurrent(pickRandom(OPM_SONGS))}
-            className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold"
-          >
-            Spin Song 🎶
-          </button>
+          <div className="card space-y-5">
+            <button
+              onClick={() => setCurrent(pickRandom(OPM_SONGS))}
+              className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold"
+            >
+              Spin Song 🎶
+            </button>
 
-          {current ? (
-            <div className="rounded-lg bg-gray-800/60 border border-white/5 p-4">
-              <div className="text-sm text-gray-400 mb-1">You got:</div>
-              <div className="text-xl font-semibold">{current.title}</div>
-              <div className="text-gray-300">{current.artist}</div>
+            {current ? (
+              <div className="rounded-lg bg-gray-800/60 border border-white/5 p-4">
+                <div className="text-sm text-gray-400 mb-1">You got:</div>
+                <div className="text-xl font-semibold">{current.title}</div>
+                <div className="text-gray-300">{current.artist}</div>
 
-              <a
-                href={searchUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block mt-4 px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100"
-              >
-                Search karaoke on YouTube ↗
-              </a>
-            </div>
-          ) : (
-            <p className="text-gray-400">Press “Spin Song” to get a random pick.</p>
-          )}
-        </div>
+                <a
+                  href={searchUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-4 px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100"
+                >
+                  Search karaoke on YouTube ↗
+                </a>
+              </div>
+            ) : (
+              <p className="text-gray-400">Press “Spin Song” to get a random pick.</p>
+            )}
+          </div>
 
-        <div className="mt-6 text-sm text-gray-500">
-          Tip: Open <a href="/radio" className="underline">Radio</a> in another tab for background vibes.
+          <div className="mt-6 text-sm text-gray-500">
+            Tip: Open <a href="/radio" className="underline">Radio</a> in another tab for background vibes.
+          </div>
+
+          <div className="page-bottom-spacer" />
         </div>
       </section>
     </>

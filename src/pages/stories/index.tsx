@@ -3,7 +3,7 @@
 
 import Head from "next/head";
 import Link from "next/link";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/router";
 import {
   collection,
@@ -71,36 +71,15 @@ export default function StoriesFeed() {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [firstCursors, setFirstCursors] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
   const [lastCursors, setLastCursors] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
-  const topRef = useRef<HTMLDivElement | null>(null);
 
   const baseQuery = useCallback(() => query(collection(db, "stories"), orderBy("createdAt", "desc")), []);
 
-  const toStory = (d: QueryDocumentSnapshot<DocumentData>): Story | null => {
-    const s = d.data() as any;
-    if (s.status !== "published" || s.visibility === "private") return null;
-    return {
-      id: d.id,
-      title: s.title,
-      slug: s.slug ?? null,
-      authorName: s.authorName,
-      authorHandle: s.authorHandle ?? null,
-      tags: s.tags || [],
-      counts: s.counts || { reactions: 0, comments: 0, reads: 0 },
-      createdAt: s.createdAt,
-    };
-  };
-
-  const scrollTopWithOffset = useCallback(() => {
-    const el = topRef.current;
-    if (!el) {
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    const yNow = window.pageYOffset || document.documentElement.scrollTop;
-    const navH = window.matchMedia("(min-width: 768px)").matches ? 96 : 80;
-    const y = rect.top + yNow - navH - 4;
-    window.scrollTo({ top: Math.max(0, y), left: 0, behavior: "auto" });
+  // ✅ Simple, reliable scroll-to-top (no offset math)
+  const hardScrollToTop = useCallback(() => {
+    try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+    try { document.scrollingElement && (document.scrollingElement.scrollTop = 0); } catch {}
+    try { document.documentElement && (document.documentElement.scrollTop = 0); } catch {}
+    try { document.body && (document.body.scrollTop = 0); } catch {}
   }, []);
 
   async function loadPage(direction: "init" | "next" | "prev") {
@@ -113,24 +92,32 @@ export default function StoriesFeed() {
       snap = await getDocs(q);
     } else if (direction === "next") {
       const last = lastCursors[page];
-      if (!last) {
-        setLoading(false);
-        return;
-      }
+      if (!last) { setLoading(false); return; }
       q = query(q, startAfter(last), fsLimit(PAGE_SIZE + 1));
       snap = await getDocs(q);
     } else {
       const first = firstCursors[page];
-      if (!first) {
-        setLoading(false);
-        return;
-      }
+      if (!first) { setLoading(false); return; }
       q = query(q, endBefore(first), limitToLast(PAGE_SIZE + 1));
       snap = await getDocs(q);
     }
 
     const docs = snap.docs;
-    const mapped = docs.map(toStory).filter(Boolean) as Story[];
+    const mapped = docs.map((d) => {
+      const s = d.data() as any;
+      if (s.status !== "published" || s.visibility === "private") return null;
+      return {
+        id: d.id,
+        title: s.title,
+        slug: s.slug ?? null,
+        authorName: s.authorName,
+        authorHandle: s.authorHandle ?? null,
+        tags: s.tags || [],
+        counts: s.counts || { reactions: 0, comments: 0, reads: 0 },
+        createdAt: s.createdAt,
+      } as Story;
+    }).filter(Boolean) as Story[];
+
     const hasMore = mapped.length > PAGE_SIZE;
     const pageItems = direction === "prev" ? mapped.slice(-PAGE_SIZE) : mapped.slice(0, PAGE_SIZE);
     setStories(pageItems);
@@ -145,49 +132,31 @@ export default function StoriesFeed() {
         setPage(0);
         setHasNextPage(hasMore);
       } else if (direction === "next") {
-        setFirstCursors((p) => {
-          const a = p.slice(0, page + 1);
-          a.push(firstDoc);
-          return a;
-        });
-        setLastCursors((p) => {
-          const a = p.slice(0, page + 1);
-          a.push(lastDoc);
-          return a;
-        });
+        setFirstCursors((p) => { const a = p.slice(0, page + 1); a.push(firstDoc); return a; });
+        setLastCursors((p) => { const a = p.slice(0, page + 1); a.push(lastDoc); return a; });
         setPage((p) => p + 1);
         setHasNextPage(hasMore);
       } else {
-        setFirstCursors((p) => {
-          const a = p.slice(0, page);
-          a[a.length - 1] = firstDoc;
-          return a;
-        });
-        setLastCursors((p) => {
-          const a = p.slice(0, page);
-          a[a.length - 1] = lastDoc;
-          return a;
-        });
+        setFirstCursors((p) => { const a = p.slice(0, page); a[a.length - 1] = firstDoc; return a; });
+        setLastCursors((p) => { const a = p.slice(0, page); a[a.length - 1] = lastDoc; return a; });
         setPage((p) => Math.max(0, p - 1));
         setHasNextPage(true);
       }
     } else {
       if (direction === "init") {
-        setFirstCursors([]);
-        setLastCursors([]);
-        setPage(0);
-        setHasNextPage(false);
+        setFirstCursors([]); setLastCursors([]); setPage(0); setHasNextPage(false);
       } else if (direction === "next") {
         setHasNextPage(false);
       }
     }
 
     setLoading(false);
-    requestAnimationFrame(scrollTopWithOffset);
+    // ✅ Just go to the real top; the header spacer already accounts for fixed header height
+    requestAnimationFrame(hardScrollToTop);
   }
 
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    hardScrollToTop();
     loadPage("init");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -217,34 +186,25 @@ export default function StoriesFeed() {
 
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Pinoy Stories — Drama, Romance & One-shots" />
-        <meta
-          name="twitter:description"
-          content="Read community-written Pinoy short stories and one-shots."
-        />
+        <meta name="twitter:description" content="Read community-written Pinoy short stories and one-shots." />
         <meta name="twitter:image" content="/brand/og-cover.png" />
       </Head>
 
       <section className="section">
         <div className="container-page max-w-5xl">
-          <div ref={topRef} style={{ scrollMarginTop: "100px" }} />
-
           <div className="flex items-center justify-between mb-1">
             <h1 className="page-title mb-0">Stories</h1>
             <Link href="/stories/new" className="btn btn-primary text-sm">
               Write a Story
             </Link>
           </div>
-          <p className="text-xs text-gray-400 mb-4">
-            Drama • Romance • One-shots from the community
-          </p>
+          <p className="text-xs text-gray-400 mb-4">Drama • Romance • One-shots from the community</p>
 
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {loading ? (
               Array.from({ length: PAGE_SIZE }).map((_, i) => <SkeletonStoryCard key={i} />)
             ) : stories.length === 0 ? (
-              <li className="col-span-full text-gray-300">
-                No stories yet. Be the first to write!
-              </li>
+              <li className="col-span-full text-gray-300">No stories yet. Be the first to write!</li>
             ) : (
               stories.map((s) => (
                 <li
@@ -274,31 +234,19 @@ export default function StoriesFeed() {
                     by <span className="font-medium text-white">{s.authorName}</span>
                     {s.authorHandle ? (
                       <>
-                        {" "}
-                        ·{" "}
-                        <Link
-                          href={`/u/${s.authorHandle}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="hover:underline"
-                        >
+                        {" "}·{" "}
+                        <Link href={`/u/${s.authorHandle}`} onClick={(e) => e.stopPropagation()} className="hover:underline">
                           @{s.authorHandle}
                         </Link>
                       </>
                     ) : null}
-                    {s.createdAt ? (
-                      <>
-                        {" "}
-                        · <span className="text-gray-400">{fmtDate(s.createdAt)}</span>
-                      </>
-                    ) : null}
+                    {s.createdAt ? <> {" "}· <span className="text-gray-400">{fmtDate(s.createdAt)}</span> </> : null}
                   </p>
 
                   {s.tags?.length ? (
                     <div className="mt-2 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                       {s.tags.map((t) => (
-                        <span key={t} className="text-xs px-2 py-1 rounded-full bg-white/10 text-gray-200">
-                          #{t}
-                        </span>
+                        <span key={t} className="text-xs px-2 py-1 rounded-full bg-white/10 text-gray-200">#{t}</span>
                       ))}
                     </div>
                   ) : null}
@@ -320,9 +268,7 @@ export default function StoriesFeed() {
               disabled={!canPrev || loading}
               onClick={() => loadPage("prev")}
               className={`px-3 py-2 rounded-md text-sm font-medium border border-white/10 ${
-                canPrev && !loading
-                  ? "bg-white/5 text-gray-100 hover:bg-white/10"
-                  : "bg-white/5 text-gray-500 cursor-not-allowed"
+                canPrev && !loading ? "bg-white/5 text-gray-100 hover:bg-white/10" : "bg-white/5 text-gray-500 cursor-not-allowed"
               }`}
               aria-disabled={!canPrev || loading}
             >
@@ -335,9 +281,7 @@ export default function StoriesFeed() {
               disabled={!canNext || loading}
               onClick={() => loadPage("next")}
               className={`px-3 py-2 rounded-md text-sm font-medium border border-white/10 ${
-                canNext && !loading
-                  ? "bg-white/5 text-gray-100 hover:bg-white/10"
-                  : "bg-white/5 text-gray-500 cursor-not-allowed"
+                canNext && !loading ? "bg-white/5 text-gray-100 hover:bg-white/10" : "bg-white/5 text-gray-500 cursor-not-allowed"
               }`}
               aria-disabled={!canNext || loading}
             >

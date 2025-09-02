@@ -3,7 +3,7 @@
 
 import Head from "next/head";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function EloadCalculator() {
   const [amount, setAmount] = useState<string>("");
@@ -13,6 +13,11 @@ export default function EloadCalculator() {
   const title = "E-load Calculator — Pinoy Tambayan Hub";
   const description =
     "Compute prepaid load totals fast, including service fees and optional discounts (reseller margin).";
+
+  // snap to the real top on mount
+  useEffect(() => {
+    try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+  }, []);
 
   const numbers = useMemo(() => {
     const amt = Math.max(0, Number(amount || 0));
@@ -59,75 +64,79 @@ export default function EloadCalculator() {
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       </Head>
 
-      <section className="pt-20 max-w-3xl mx-auto px-4 text-lighttext">
-        {/* Back to Tools */}
-        <div className="mb-3">
-          <Link href="/tools" className="text-sm text-gray-400 hover:text-blue-400">
-            ← Back to Tools
-          </Link>
-        </div>
+      <section className="section">
+        <div className="container-page max-w-3xl text-lighttext">
+          {/* Back to Tools */}
+          <div className="mb-3">
+            <Link href="/tools" className="text-sm text-gray-400 hover:text-blue-400">
+              ← Back to Tools
+            </Link>
+          </div>
 
-        <h1 className="text-3xl font-bold mb-3">📱 E-load Calculator</h1>
-        <p className="text-gray-400 mb-6">
-          Quickly compute your prepaid load cost including service fees and optional discounts (e.g., reseller margin).
-        </p>
+          <h1 className="page-title">📱 E-load Calculator</h1>
+          <p className="text-gray-400 mb-6">
+            Quickly compute your prepaid load cost including service fees and optional discounts (e.g., reseller margin).
+          </p>
 
-        <div className="card space-y-4">
-          <label className="block">
-            <span className="text-sm text-gray-300">Load Amount (₱)</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              placeholder="e.g., 50"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="mt-1 w-full rounded-md bg-gray-800/80 text-white px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </label>
+          <div className="card space-y-4">
+            <label className="block">
+              <span className="text-sm text-gray-300">Load Amount (₱)</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="e.g., 50"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="mt-1 w-full rounded-md bg-gray-800/80 text-white px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </label>
 
-          <label className="block">
-            <span className="text-sm text-gray-300">Service Fee (₱)</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              placeholder="e.g., 2"
-              value={serviceFee}
-              onChange={(e) => setServiceFee(e.target.value)}
-              className="mt-1 w-full rounded-md bg-gray-800/80 text-white px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </label>
+            <label className="block">
+              <span className="text-sm text-gray-300">Service Fee (₱)</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="e.g., 2"
+                value={serviceFee}
+                onChange={(e) => setServiceFee(e.target.value)}
+                className="mt-1 w-full rounded-md bg-gray-800/80 text-white px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </label>
 
-          <label className="block">
-            <span className="text-sm text-gray-300">Discount (%) — optional</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              placeholder="e.g., 5"
-              value={discountPct}
-              onChange={(e) => setDiscountPct(e.target.value)}
-              className="mt-1 w-full rounded-md bg-gray-800/80 text-white px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </label>
+            <label className="block">
+              <span className="text-sm text-gray-300">Discount (%) — optional</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="e.g., 5"
+                value={discountPct}
+                onChange={(e) => setDiscountPct(e.target.value)}
+                className="mt-1 w-full rounded-md bg-gray-800/80 text-white px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </label>
 
-          <div className="rounded-lg bg-gray-800/60 border border-white/5 p-4 space-y-2">
-            <div className="flex justify-between text-gray-300">
-              <span>Amount after discount</span>
-              <span>₱{numbers.discounted.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-gray-300">
-              <span>Service fee</span>
-              <span>₱{numbers.fee.toFixed(2)}</span>
-            </div>
-            <hr className="border-gray-700" />
-            <div className="flex justify-between text-lg font-semibold">
-              <span>Total to pay</span>
-              <span className="text-blue-400">₱{numbers.total.toFixed(2)}</span>
+            <div className="rounded-lg bg-gray-800/60 border border-white/5 p-4 space-y-2">
+              <div className="flex justify-between text-gray-300">
+                <span>Amount after discount</span>
+                <span>₱{numbers.discounted.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-300">
+                <span>Service fee</span>
+                <span>₱{numbers.fee.toFixed(2)}</span>
+              </div>
+              <hr className="border-gray-700" />
+              <div className="flex justify-between text-lg font-semibold">
+                <span>Total to pay</span>
+                <span className="text-blue-400">₱{numbers.total.toFixed(2)}</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-6 text-sm text-gray-500">
-          Note: Estimates only. For exact promo pricing, check official providers (Globe, Smart, DITO).
+          <div className="mt-6 text-sm text-gray-500">
+            Note: Estimates only. For exact promo pricing, check official providers (Globe, Smart, DITO).
+          </div>
+
+          <div className="page-bottom-spacer" />
         </div>
       </section>
     </>

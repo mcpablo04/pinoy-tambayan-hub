@@ -56,19 +56,20 @@ export default function News() {
       setPage(0);
     } finally {
       setLoading(false);
+      // snap to top after (re)load
+      try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
     }
   };
 
   useEffect(() => {
-    load(q); // initial
+    // ensure top on first mount
+    try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+    load(q);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pageCount = Math.max(1, Math.ceil(items.length / PER_PAGE));
-  const slice = useMemo(
-    () => items.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE),
-    [items, page]
-  );
+  const slice = useMemo(() => items.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE), [items, page]);
   const canPrev = page > 0;
   const canNext = page < pageCount - 1;
 
@@ -82,22 +83,14 @@ export default function News() {
           content="Latest OPM headlines, new releases, gigs, and community updates curated from PH-localized sources."
         />
         <link rel="canonical" href="https://pinoytambayanhub.com/news" />
-
         <meta property="og:title" content="Pinoy Music & Community News" />
-        <meta
-          property="og:description"
-          content="Gigs, releases, radio highlights, and community news for Filipino listeners."
-        />
+        <meta property="og:description" content="Gigs, releases, radio highlights, and community news for Filipino listeners." />
         <meta property="og:image" content="/brand/og-cover.png" />
         <meta property="og:url" content="https://pinoytambayanhub.com/news" />
         <meta property="og:type" content="website" />
-
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Pinoy Music & Community News" />
-        <meta
-          name="twitter:description"
-          content="OPM releases, gigs, and community updates — all in one feed."
-        />
+        <meta name="twitter:description" content="OPM releases, gigs, and community updates — all in one feed." />
         <meta name="twitter:image" content="/brand/og-cover.png" />
       </Head>
 
@@ -118,19 +111,11 @@ export default function News() {
               aria-label="Search news"
             />
             <div className="flex gap-2 md:w-auto">
-              <button
-                onClick={() => { setQ(input); load(input); }}
-                className="btn btn-primary w-full md:w-auto"
-              >
+              <button onClick={() => { setQ(input); load(input); }} className="btn btn-primary w-full md:w-auto">
                 Search
               </button>
               <button
-                onClick={() => {
-                  const def = PRESETS[0].q;
-                  setInput(def);
-                  setQ(def);
-                  load(def);
-                }}
+                onClick={() => { const def = PRESETS[0].q; setInput(def); setQ(def); load(def); }}
                 className="btn btn-ghost w-full md:w-auto"
                 title="Reset to All OPM"
               >
@@ -147,9 +132,7 @@ export default function News() {
                   key={p.label}
                   onClick={() => { setInput(p.q); setQ(p.q); load(p.q); }}
                   className={`shrink-0 px-3 py-1.5 rounded-full border whitespace-nowrap ${
-                    q === p.q
-                      ? "bg-blue-600 border-blue-500 text-white"
-                      : "bg-gray-800/70 border-gray-700 text-gray-200 hover:bg-gray-700"
+                    q === p.q ? "bg-blue-600 border-blue-500 text-white" : "bg-gray-800/70 border-gray-700 text-gray-200 hover:bg-gray-700"
                   }`}
                   title={p.q}
                 >
@@ -164,9 +147,7 @@ export default function News() {
             <div className="flex items-center justify-between mb-3 text-sm text-gray-400">
               <div>
                 Showing{" "}
-                <span className="text-gray-200">
-                  {page * PER_PAGE + 1}-{Math.min(items.length, (page + 1) * PER_PAGE)}
-                </span>{" "}
+                <span className="text-gray-200">{page * PER_PAGE + 1}-{Math.min(items.length, (page + 1) * PER_PAGE)}</span>{" "}
                 of <span className="text-gray-200">{items.length}</span>
               </div>
               <div className="flex gap-2">
@@ -213,9 +194,7 @@ export default function News() {
                     <div className="text-sm text-gray-400 mb-1">
                       {it.source || "Source"} • {fmtDate(it.pubDate)}
                     </div>
-                    <div className="font-semibold text-gray-100 line-clamp-3">
-                      {it.title}
-                    </div>
+                    <div className="font-semibold text-gray-100 line-clamp-3">{it.title}</div>
                   </a>
                 ))}
               </div>
@@ -229,9 +208,7 @@ export default function News() {
                 >
                   ← Prev
                 </button>
-                <span className="text-sm text-gray-400">
-                  Page {page + 1} of {pageCount}
-                </span>
+                <span className="text-sm text-gray-400">Page {page + 1} of {pageCount}</span>
                 <button
                   disabled={!canNext}
                   onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}

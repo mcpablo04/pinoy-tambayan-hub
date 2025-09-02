@@ -1,6 +1,9 @@
 // src/pages/tools.tsx
+"use client";
+
 import Head from "next/head";
 import Link from "next/link";
+import { useEffect } from "react";
 
 const TOOLS = [
   {
@@ -24,20 +27,15 @@ export default function ToolsPage() {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      {
-        "@type": "ListItem",
-        position: 1,
-        name: "Home",
-        item: "https://pinoytambayanhub.com/",
-      },
-      {
-        "@type": "ListItem",
-        position: 2,
-        name: "Tools",
-        item: "https://pinoytambayanhub.com/tools",
-      },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://pinoytambayanhub.com/" },
+      { "@type": "ListItem", position: 2, name: "Tools", item: "https://pinoytambayanhub.com/tools" },
     ],
   };
+
+  // Ensure the page starts at the real top (pairs nicely with your global ScrollReset)
+  useEffect(() => {
+    try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+  }, []);
 
   return (
     <>
@@ -61,28 +59,32 @@ export default function ToolsPage() {
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       </Head>
 
-      <section className="pt-20 max-w-6xl mx-auto px-4 text-lighttext">
-        <h1 className="text-3xl font-bold mb-3">🛠️ Pinoy Tambayan Tools</h1>
-        <p className="text-gray-400 mb-8">
-          Fun and useful one-page utilities built for the community. Family-friendly and AdSense-ready.
-        </p>
+      <section className="section">
+        <div className="container-page">
+          <h1 className="page-title">🛠️ Pinoy Tambayan Tools</h1>
+          <p className="text-gray-400 mb-6">
+            Fun and useful one-page utilities built for the community. Family-friendly and AdSense-ready.
+          </p>
 
-        <div className="grid gap-6 sm:grid-cols-2">
-          {TOOLS.map((t) => (
-            <Link key={t.href} href={t.href} className="card hover:bg-gray-800 transition">
-              <h2 className="text-xl font-semibold mb-2">{t.name}</h2>
-              <p className="text-gray-300 text-sm">{t.desc}</p>
-            </Link>
-          ))}
-        </div>
+          <div className="grid gap-4 sm:gap-6 sm:grid-cols-2">
+            {TOOLS.map((t) => (
+              <Link key={t.href} href={t.href} className="card hover:bg-gray-800 transition">
+                <h2 className="text-xl font-semibold mb-2">{t.name}</h2>
+                <p className="text-gray-300 text-sm">{t.desc}</p>
+              </Link>
+            ))}
+          </div>
 
-        <div className="mt-10 text-sm text-gray-500">
-          <p className="mb-2 font-semibold">AdSense note:</p>
-          <ul className="list-disc pl-5 space-y-1">
-            <li>Original, helpful content with descriptive text blocks.</li>
-            <li>No adult, gambling, or pirated content. No embedded copyrighted media.</li>
-            <li>Clear navigation and good UX for higher engagement.</li>
-          </ul>
+          <div className="mt-8 text-sm text-gray-500">
+            <p className="mb-2 font-semibold">AdSense note:</p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Original, helpful content with descriptive text blocks.</li>
+              <li>No adult, gambling, or pirated content. No embedded copyrighted media.</li>
+              <li>Clear navigation and good UX for higher engagement.</li>
+            </ul>
+          </div>
+
+          <div className="page-bottom-spacer" />
         </div>
       </section>
     </>
