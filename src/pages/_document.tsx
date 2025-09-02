@@ -3,54 +3,45 @@ import { Html, Head, Main, NextScript } from "next/document";
 
 export default function Document() {
   return (
-    <Html lang="en">
+    <Html lang="en" className="bg-darkbg">
       <Head>
-        {/* Encoding (leave viewport out of _document to avoid warnings) */}
+        {/* Keep encoding; let per-page <Head> handle titles/descriptions */}
         <meta charSet="utf-8" />
 
-        {/* Default SEO (pages can override with next/head) */}
-        <meta
-          name="description"
-          content="Pinoy Tambayan Hub – your daily OPM hits, live radio, weather, events, news, and tambayan vibes in one place."
-        />
-
-        {/* Google AdSense site verification (replace ID) */}
+        {/* AdSense site verification (keep your real ID) */}
         <meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX" />
 
         {/* Fonts performance */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
-          rel="stylesheet"
-        />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
 
-        {/* Favicon & app icons (ensure files exist in /public/brand) */}
-        <link rel="icon" href="/brand/pt-hub-logo-32.png" sizes="32x32" />
-        <link rel="icon" href="/brand/pt-hub-logo-64.png" sizes="64x64" />
-        <link rel="apple-touch-icon" href="/brand/pt-hub-logo-180.png" />
+        {/* --------- Favicons / PWA --------- */}
+        {/* Primary */}
+        <link rel="icon" href="/favicon.ico" />
+        {/* PNG fallbacks (and used by some crawlers) */}
+        <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
+        {/* Apple */}
+        <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+        {/* Android/manifest */}
+        <link rel="manifest" href="/site.webmanifest" />
+        {/* Safari pinned tab (optional if you have a mono SVG) */}
+        <link rel="mask-icon" href="/icons/safari-pinned-tab.svg" color="#3b82f6" />
 
-        {/* Open Graph / Twitter */}
-        <meta property="og:title" content="Pinoy Tambayan Hub" />
-        <meta property="og:description" content="Tambayan vibes. OPM hits. Radio everywhere." />
-        <meta property="og:image" content="/brand/og-cover.png" />
-        <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="Pinoy Tambayan Hub" />
-
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Pinoy Tambayan Hub" />
-        <meta name="twitter:description" content="Tambayan vibes. OPM hits. Radio everywhere." />
-        <meta name="twitter:image" content="/brand/og-cover.png" />
-
-        {/* Theme colors */}
+        <meta name="application-name" content="Pinoy Tambayan Hub" />
+        <meta name="apple-mobile-web-app-title" content="Pinoy Tambayan Hub" />
+        <meta name="theme-color" content="#0a0a0a" />
         <meta name="color-scheme" content="dark light" />
-        <meta name="theme-color" content="#0f1115" />
-      </Head>
 
-      <body className="antialiased">
+        {/* Site-wide OG defaults (pages override) */}
+        <meta property="og:site_name" content="Pinoy Tambayan Hub" />
+        <meta property="og:image" content="/brand/og-cover.png" />
+      </Head>
+      <body className="antialiased bg-darkbg text-lighttext">
         <Main />
         <NextScript />
-        {/* NOTE: AdSense script is loaded via next/script in _app.tsx */}
+        {/* AdSense script is loaded in _app.tsx */}
       </body>
     </Html>
   );
