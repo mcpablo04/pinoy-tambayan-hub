@@ -3,8 +3,19 @@
 
 import Head from "next/head";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, orderBy, query, deleteDoc, doc } from "firebase/firestore";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  limit as fsLimit,
+  startAfter,
+  deleteDoc,
+  doc,
+  type QueryDocumentSnapshot,
+  type DocumentData,
+} from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { useAuth } from "../../context/AuthContext";
 import MetaHead from "../../components/MetaHead";
@@ -138,6 +149,7 @@ const peso = (n?: number | null) =>
 
 const ADMIN_EMAIL = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase();
 const SITE = "https://pinoytambayanhub.com";
+const PAGE_SIZE = 12;
 
 function slugify(input: string) {
   return (input || "")
@@ -155,6 +167,11 @@ export default function MarketplacePage() {
   const isAdmin = (user?.email?.toLowerCase() || "") === ADMIN_EMAIL;
 
   const [items, setItems] = useState<Product[]>([]);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const [qStr, setQStr] = useState("");
   const [cat, setCat] = useState("All");
   const [sort, setSort] = useState<"new" | "price-asc" | "price-desc">("new");
@@ -167,15 +184,68 @@ export default function MarketplacePage() {
   const popToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false, title: "", message: "" });
 
+  // initial load
   useEffect(() => {
-    const q = query(collection(db, "products"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const arr: Product[] = [];
-      snap.forEach((d) => arr.push({ id: d.id, ...(d.data() as any) }));
-      setItems(arr);
-    });
-    return () => unsub();
+    (async () => {
+      await loadMore(true);
+      setInitialLoading(false);
+
+      // show toast if ?submitted=1
+      if (typeof window !== "undefined" && window.location.search.includes("submitted=1")) {
+        pushToast("success", "Thanks! Your product was submitted.");
+        const url = new URL(window.location.href);
+        url.searchParams.delete("submitted");
+        window.history.replaceState({}, "", url.toString());
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function loadMore(initial = false) {
+    if (loadingMore || (!initial && !hasMore)) return;
+    setLoadingMore(true);
+    try {
+      let qRef = query(
+        collection(db, "products"),
+        orderBy("createdAt", "desc"),
+        fsLimit(PAGE_SIZE)
+      );
+      if (lastDoc) {
+        qRef = query(
+          collection(db, "products"),
+          orderBy("createdAt", "desc"),
+          startAfter(lastDoc),
+          fsLimit(PAGE_SIZE)
+        );
+      }
+      const snap = await getDocs(qRef);
+      const page: Product[] = [];
+      snap.forEach((d) => page.push({ id: d.id, ...(d.data() as any) }));
+      setItems((prev) => (initial ? page : [...prev, ...page]));
+      setLastDoc(snap.docs.length ? snap.docs[snap.docs.length - 1] : null);
+      setHasMore(snap.size === PAGE_SIZE);
+    } catch (e: any) {
+      console.error(e);
+      pushToast("error", e?.message || "Failed to load products.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  // infinite scroll sentinel
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const el = sentinelRef.current;
+    const io = new IntersectionObserver((entries) => {
+      const ent = entries[0];
+      if (ent.isIntersecting && hasMore && !loadingMore) {
+        loadMore(false);
+      }
+    }, { rootMargin: "600px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loadingMore]);
 
   const categories = useMemo(
     () => ["All", ...Array.from(new Set(items.map((i) => i.category || "Others")))],
@@ -229,6 +299,7 @@ export default function MarketplacePage() {
 
     try {
       await deleteDoc(doc(db, "products", id));
+      setItems((prev) => prev.filter((i) => i.id !== id)); // optimistic update
       pushToast("success", "Product deleted.");
     } catch (e: any) {
       console.error(e);
@@ -236,7 +307,7 @@ export default function MarketplacePage() {
     }
   }
 
-  // JSON-LD (ItemList) for the cards we render
+  // JSON-LD (ItemList) for the first 12 currently visible cards
   const jsonLd = useMemo(() => {
     const itemsForLd = productCards.slice(0, 12).map((p, idx) => ({
       "@type": "ListItem",
@@ -329,66 +400,91 @@ export default function MarketplacePage() {
         </section>
 
         {/* Results */}
-        {productCards.length === 0 ? (
+        {initialLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="card h-48 animate-pulse bg-gray-800/60" />
+            ))}
+          </div>
+        ) : productCards.length === 0 ? (
           <div className="card text-center text-neutral-300">No results. Try different keywords or filters.</div>
         ) : (
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {productCards.map((p) => {
-              const canDelete = !!user && (isAdmin || p.ownerUid === user.uid);
-              return (
-                <li key={p.id} className="card card-hover relative">
-                  {/* Delete button (owner/admin only) */}
-                  {canDelete && (
-                    <button
-                      type="button"
-                      onClick={() => onDelete(p.id)}
-                      className="absolute right-2 top-2 z-20 rounded-md bg-red-600/90 text-white text-xs px-2 py-1 hover:bg-red-500"
-                      title="Delete product"
-                    >
-                      Delete
-                    </button>
-                  )}
-
-                  {/* Card links to detail page for SEO */}
-                  <Link href={p.href} className="block" aria-label={`${p.title} – details`}>
-                    {p.imageUrl && (
-                      <div className="mb-3 overflow-hidden rounded-md">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.imageUrl} alt={p.title} className="aspect-[16/10] w-full object-cover" loading="lazy" />
-                      </div>
+          <>
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {productCards.map((p) => {
+                const canDelete = !!user && (isAdmin || p.ownerUid === user.uid);
+                return (
+                  <li key={p.id} className="card card-hover relative">
+                    {/* Delete button (owner/admin only) */}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(p.id)}
+                        className="absolute right-2 top-2 z-20 rounded-md bg-red-600/90 text-white text-xs px-2 py-1 hover:bg-red-500"
+                        title="Delete product"
+                      >
+                        Delete
+                      </button>
                     )}
-                    <div className="space-y-2">
-                      <h3 className="text-base font-semibold leading-snug line-clamp-2">{p.title}</h3>
-                      <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-300">
-                        <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs">{p.category || "Others"}</span>
-                        {p.store && <span className="text-xs text-neutral-400">via {p.store}</span>}
+
+                    {/* Card links to detail page for SEO */}
+                    <Link href={p.href} className="block" aria-label={`${p.title} – details`}>
+                      {p.imageUrl && (
+                        <div className="mb-3 overflow-hidden rounded-md">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={p.imageUrl} alt={p.title} className="aspect-[16/10] w-full object-cover" loading="lazy" />
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <h3 className="text-base font-semibold leading-snug line-clamp-2">{p.title}</h3>
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-300">
+                          <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs">{p.category || "Others"}</span>
+                          {p.store && <span className="text-xs text-neutral-400">via {p.store}</span>}
+                        </div>
+                        {p.blurb && <p className="text-sm text-neutral-300 line-clamp-2">{p.blurb}</p>}
                       </div>
-                      {p.blurb && <p className="text-sm text-neutral-300 line-clamp-2">{p.blurb}</p>}
+                    </Link>
+
+                    {/* Footer: price + affiliate CTA */}
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="text-lg font-semibold">{peso(p.pricePhp ?? undefined)}</div>
+                      <a
+                        href={p.affiliateUrl}
+                        rel="nofollow sponsored noopener"
+                        target="_blank"
+                        className="text-xs text-blue-400 underline-offset-4"
+                      >
+                        Check price →
+                      </a>
                     </div>
-                  </Link>
 
-                  {/* Footer: price + affiliate CTA */}
-                  <div className="mt-2 flex items-center justify-between">
-                    <div className="text-lg font-semibold">{peso(p.pricePhp ?? undefined)}</div>
-                    <a
-                      href={p.affiliateUrl}
-                      rel="nofollow sponsored noopener"
-                      target="_blank"
-                      className="text-xs text-blue-400 underline-offset-4"
-                    >
-                      Check price →
-                    </a>
-                  </div>
+                    <p className="mt-2 text-[11px] leading-snug text-neutral-500">
+                      Affiliate link (from the submitter or this site). Price/availability may change—verify on the merchant site.
+                    </p>
 
-                  <p className="mt-2 text-[11px] leading-snug text-neutral-500">
-                    Affiliate link (from the submitter or this site). Price/availability may change—verify on the merchant site.
-                  </p>
+                    <div className="mt-2 text-[11px] text-neutral-500">Posted by {p.ownerName || "User"}</div>
+                  </li>
+                );
+              })}
+            </ul>
 
-                  <div className="mt-2 text-[11px] text-neutral-500">Posted by {p.ownerName || "User"}</div>
-                </li>
-              );
-            })}
-          </ul>
+            {/* Sentinel + fallback */}
+            <div ref={sentinelRef} className="h-8" />
+            <div className="mt-3 flex items-center justify-center">
+              {loadingMore ? (
+                <div className="text-sm text-neutral-400">Loading more…</div>
+              ) : hasMore ? (
+                <button
+                  onClick={() => loadMore(false)}
+                  className="px-4 py-2 rounded-md border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10"
+                >
+                  Load more
+                </button>
+              ) : (
+                <div className="text-sm text-neutral-500">You’ve reached the end.</div>
+              )}
+            </div>
+          </>
         )}
       </main>
     </>
