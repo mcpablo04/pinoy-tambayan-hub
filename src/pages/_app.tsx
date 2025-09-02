@@ -10,60 +10,7 @@ import GlobalPlayer from "../components/GlobalPlayer";
 import { PlayerProvider } from "../context/PlayerContext";
 import { AuthProvider } from "../context/AuthContext";
 
-import { useEffect } from "react";
 import { useRouter } from "next/router";
-
-function hardScrollToTop() {
-  try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
-  try { document.scrollingElement && (document.scrollingElement.scrollTop = 0); } catch {}
-  try { document.documentElement && (document.documentElement.scrollTop = 0); } catch {}
-  try { document.body && (document.body.scrollTop = 0); } catch {}
-
-  const ids = ["__next"];
-  ids.forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollTop = 0;
-  });
-
-  const mains = document.querySelectorAll<HTMLElement>("main, [data-scrollable]");
-  mains.forEach((el) => (el.scrollTop = 0));
-}
-
-function ScrollReset() {
-  const router = useRouter();
-
-  useEffect(() => {
-    if ("scrollRestoration" in window.history) {
-      (window.history as any).scrollRestoration = "manual";
-    }
-  }, []);
-
-  useEffect(() => {
-    const toTopNow = () => {
-      hardScrollToTop();
-      requestAnimationFrame(hardScrollToTop);
-      setTimeout(hardScrollToTop, 0);
-    };
-
-    router.events.on("routeChangeStart", toTopNow);
-    router.events.on("routeChangeComplete", toTopNow);
-    router.events.on("hashChangeComplete", toTopNow);
-
-    const popState = () => toTopNow();
-    window.addEventListener("popstate", popState);
-
-    toTopNow();
-
-    return () => {
-      router.events.off("routeChangeStart", toTopNow);
-      router.events.off("routeChangeComplete", toTopNow);
-      router.events.off("hashChangeComplete", toTopNow);
-      window.removeEventListener("popstate", popState);
-    };
-  }, [router.events, router.asPath]);
-
-  return null;
-}
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -93,11 +40,10 @@ export default function MyApp({ Component, pageProps }: AppProps) {
         {/* `isolate` helps avoid odd ancestor effects */}
         <div className="app-shell isolate">
           <NavBar />
-          <ScrollReset />
 
           {/* Desktop gets padding to clear fixed header; mobile doesn't (handled by NavBar spacer) */}
           <main
-            className="flex-grow md:pt-24 px-4 md:px-6 max-w-6xl mx-auto w-full"
+            className="flex-grow md:pt-24 px-4 md:px-6 max-w-6xl mx-auto w-full overflow-anchor-none"
             key={router.asPath}
           >
             <Component {...pageProps} />

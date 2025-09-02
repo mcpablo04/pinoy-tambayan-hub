@@ -145,7 +145,6 @@ img, svg, video { max-width: 100%; height: auto; }
 /* Safe-area helpers (iOS notch) */
 :root { --safe-top: env(safe-area-inset-top); }
 
-
 /* Smooth compositing for fixed/sticky headers */
 .gpu-smooth {
   transform: translateZ(0);
@@ -160,3 +159,26 @@ img, svg, video { max-width: 100%; height: auto; }
     transition: none !important;
   }
 }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Prevent scroll anchoring in custom scrollers */
+.overflow-anchor-none { overflow-anchor: none; }
+
+/* === horizontal scroller helpers for mobile navbar === */
+.nav-scroll-x {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain; /* keep horizontal swipe inside the strip */
+}
+
+/* If your Tailwind build exposes touch-action utilities, you already have `touch-pan-x`.
+   If not, this fallback ensures the gesture is allowed. */
+@supports not (touch-action: pan-x) {
+  .touch-pan-x { touch-action: auto; }
+}
+
+
+/* drag-to-scroll helper */
+.nav-drag-scroll { cursor: grab; }
+.nav-drag-scroll.dragging { cursor: grabbing; }
