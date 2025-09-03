@@ -1,3 +1,4 @@
+// src/components/RadioPlayer.tsx
 "use client";
 
 import { useRef, useState, useEffect } from "react";
@@ -13,9 +14,12 @@ export interface Station {
 export interface RadioPlayerProps {
   station: Station;
   hideTitle?: boolean;
-  /** bump this key (from context) to force auto-play, e.g. on next/prev */
+  /** bump this key (from context) to force auto-play (from a user click like next/prev) */
   playOnLoadKey?: number;
 }
+
+const VOL_KEY = "pth_volume";
+const AUTOPLAY_KEY = "pth_autoplay_on_load";
 
 export default function RadioPlayer({
   station,
@@ -23,81 +27,105 @@ export default function RadioPlayer({
   playOnLoadKey,
 }: RadioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
+
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   // Persisted volume
-  const [volume, setVolume] = useState(() => {
+  const [volume, setVolume] = useState<number>(() => {
     if (typeof window === "undefined") return 0.5;
-    const saved = window.localStorage.getItem("pth_volume");
-    return saved ? Math.min(1, Math.max(0, Number(saved))) : 0.5;
+    const saved = Number(window.localStorage.getItem(VOL_KEY));
+    return Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.5;
   });
 
-  // Track last key to avoid duplicate autoplay triggers
-  const lastKeyRef = useRef<number | undefined>(undefined);
+  // Keep volume synced
+  useEffect(() => {
+    const a = audioRef.current;
+    if (a) a.volume = volume;
+    try {
+      window.localStorage.setItem(VOL_KEY, String(volume));
+    } catch {}
+  }, [volume]);
 
+  // Ensure only one audio plays on the page
   const stopOtherAudios = () => {
     if (typeof document === "undefined") return;
     const me = audioRef.current;
     document.querySelectorAll("audio").forEach((el) => {
       if (el !== me) {
-        try { (el as HTMLAudioElement).pause(); } catch {}
-        try { (el as HTMLAudioElement).src = ""; (el as HTMLAudioElement).load(); } catch {}
+        try {
+          (el as HTMLAudioElement).pause();
+        } catch {}
       }
     });
   };
 
-  const killAudio = () => {
+  // Normal (non-muted) autoplay attempt
+  const tryAutoplay = async () => {
     const a = audioRef.current;
     if (!a) return;
-    try { a.pause(); } catch {}
-    try { a.src = ""; a.load(); } catch {}
-    setPlaying(false);
-    setLoading(false);
+
+    setLoading(true);
     setErr(null);
+    stopOtherAudios();
+
+    try {
+      await a.play(); // no muted trick
+      setPlaying(true);
+      setLoading(false);
+    } catch {
+      // Browser blocked autoplay — require explicit user gesture
+      setPlaying(false);
+      setLoading(false);
+      setErr("Click play to start the stream.");
+    }
   };
 
-  // On mount/unmount
-  useEffect(() => {
-    stopOtherAudios();
-    return () => {
-      killAudio();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Volume sync
+  // Load new station; only attempt autoplay if user had played before
   useEffect(() => {
     const a = audioRef.current;
-    if (a) a.volume = volume;
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("pth_volume", String(volume));
+    if (!a) return;
+
+    a.src = station.url;
+    a.load();
+
+    const shouldAutoplay =
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(AUTOPLAY_KEY) === "1";
+
+    if (shouldAutoplay) {
+      void tryAutoplay(); // may still be blocked, then we show the hint
+    } else {
+      setPlaying(false);
+      setLoading(false);
+      setErr(null);
     }
-  }, [volume]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [station.id, station.url]);
 
-  // Load new station (no autoplay here)
+  // Media event listeners to keep UI state accurate
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
 
-    killAudio();            // clean stop previous
-    stopOtherAudios();      // enforce singleton
-    a.src = station.url;    // set new src
-    a.load();               // prepare
-  }, [station.url]);
-
-  // Media event handlers -> keep status accurate
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-
-    const onWaiting = () => { setLoading(true); setErr(null); };
-    const onPlaying = () => { setLoading(false); setErr(null); setPlaying(true); };
-    const onStalled  = () => { setLoading(true); };
-    const onPause    = () => { setPlaying(false); };
-    const onEnded    = () => { setPlaying(false); setLoading(false); };
-    const onError    = () => { setLoading(false); setPlaying(false); setErr("Stream error. Try again."); };
+    const onWaiting = () => setLoading(true);
+    const onPlaying = () => {
+      setLoading(false);
+      setErr(null);
+      setPlaying(true);
+    };
+    const onStalled = () => setLoading(true);
+    const onPause = () => setPlaying(false);
+    const onEnded = () => {
+      setPlaying(false);
+      setLoading(false);
+    };
+    const onError = () => {
+      setPlaying(false);
+      setLoading(false);
+      setErr("Stream error. Try again.");
+    };
 
     a.addEventListener("waiting", onWaiting);
     a.addEventListener("playing", onPlaying);
@@ -116,37 +144,47 @@ export default function RadioPlayer({
     };
   }, []);
 
-  // Auto-play when the key from context bumps (e.g., next/prev or card click)
+  // When playOnLoadKey changes (e.g., Next/Prev button was clicked),
+  // attempt a normal play. If the browser blocks, show the hint.
+  const lastKeyRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (playOnLoadKey === undefined) return;
-    if (lastKeyRef.current === playOnLoadKey) return; // already handled this key
+    if (lastKeyRef.current === playOnLoadKey) return;
     lastKeyRef.current = playOnLoadKey;
 
-    const a = audioRef.current;
-    if (!a) return;
-
-    setErr(null);
-    setLoading(true);
-    stopOtherAudios();
-    a.play()
-      .then(() => { setPlaying(true); setLoading(false); })
-      .catch(() => { setPlaying(false); setLoading(false); setErr("Couldn’t start the stream."); });
+    // Since the bump is caused by a user action (click), most browsers allow play()
+    try {
+      window.localStorage.setItem(AUTOPLAY_KEY, "1");
+    } catch {}
+    void tryAutoplay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playOnLoadKey]);
 
-  const togglePlay = () => {
+  // Toggle play/pause (and remember preference only from a click)
+  const togglePlay = async () => {
     const a = audioRef.current;
     if (!a) return;
 
     if (playing) {
-      a.pause();
-      // onPause handler will setPlaying(false)
+      try {
+        a.pause();
+      } finally {
+        setPlaying(false);
+        try {
+          window.localStorage.setItem(AUTOPLAY_KEY, "0");
+        } catch {}
+      }
     } else {
-      setErr(null);
-      setLoading(true);
-      stopOtherAudios();
-      a.play()
-        .then(() => { setPlaying(true); setLoading(false); })
-        .catch(() => { setPlaying(false); setLoading(false); setErr("Couldn’t start the stream."); });
+      try {
+        await a.play(); // direct, user-gesture
+        setPlaying(true);
+        setErr(null);
+        try {
+          window.localStorage.setItem(AUTOPLAY_KEY, "1");
+        } catch {}
+      } catch {
+        setErr("Click play to start the stream.");
+      }
     }
   };
 
@@ -154,7 +192,7 @@ export default function RadioPlayer({
     <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
       {!hideTitle && (
         <h2 className="text-white font-semibold truncate max-w-[70vw]">
-          {station.name}
+          <span suppressHydrationWarning>{station.name}</span>
         </h2>
       )}
 
@@ -178,7 +216,7 @@ export default function RadioPlayer({
         </div>
       </div>
 
-      {/* 👇 Buffering/Status line */}
+      {/* status line */}
       <div className="text-xs text-gray-400 min-h-[1rem]">
         {loading ? "Buffering…" : err ? err : playing ? "Live" : "Ready"}
       </div>
@@ -186,7 +224,7 @@ export default function RadioPlayer({
       <audio
         ref={audioRef}
         className="sr-only"
-        preload="none"
+        preload="auto"
         crossOrigin="anonymous"
         playsInline
       />
