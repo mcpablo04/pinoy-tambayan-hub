@@ -1,0 +1,279 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- user profiles ---
+    match /users/{uid} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // --- username registry ---
+    match /usernames/{handle} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && !exists(/databases/$(database)/documents/usernames/$(handle));
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // --- messages ---
+    match /messages/{id} {
+      allow read: if true;
+      allow create: if
+        request.resource.data.keys().hasOnly(['name','text','createdAt']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 40 &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 500
+      || (
+        request.auth != null &&
+        request.resource.data.keys().hasOnly(['uid','name','photoURL','text','createdAt']) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 40 &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 500 &&
+        (!('photoURL' in request.resource.data) ||
+          request.resource.data.photoURL == null ||
+          request.resource.data.photoURL is string)
+      );
+      allow update, delete: if false;
+    }
+
+    // --- page presence ---
+    match /page_presence/{id} {
+      allow read: if false;
+      allow create, update: if
+        request.resource.data.keys().hasOnly(['id','uid','path','lastActive','since']) &&
+        request.resource.data.id == id &&
+        request.resource.data.path is string &&
+        (
+          (request.auth != null && id == request.auth.uid && request.resource.data.uid == request.auth.uid)
+          ||
+          (request.auth == null && id.matches('^anon-.*$') && request.resource.data.uid == null)
+        );
+      allow delete: if false;
+    }
+
+    // --- stories (unchanged) ---
+    match /stories/{storyId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'authorId','authorName','authorHandle',
+          'title','slug','tags','coverUrl',
+          'content','counts','status',
+          'visibility','createdAt','updatedAt'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && (request.resource.data.slug == null || request.resource.data.slug is string)
+        && request.resource.data.content is map
+        && request.resource.data.content.type == 'single'
+        && request.resource.data.content.body is string
+        && request.resource.data.content.body.size() > 0
+        && request.resource.data.content.body.size() <= 50000
+        && (request.resource.data.tags == null || (request.resource.data.tags is list && request.resource.data.tags.size() <= 10))
+        && (request.resource.data.coverUrl == null || request.resource.data.coverUrl is string)
+        && request.resource.data.counts is map
+        && request.resource.data.counts.reactions is int
+        && request.resource.data.counts.comments is int
+        && request.resource.data.counts.reads is int
+        && request.resource.data.status in ['draft','published']
+        && request.resource.data.visibility in ['public','unlisted','private'];
+
+      allow update: if request.auth != null
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.diff(resource.data).changedKeys()
+             .hasOnly(['title','slug','tags','coverUrl','content','status','visibility','updatedAt'])
+        && (!('title' in request.resource.data.diff(resource.data).changedKeys())
+            || (request.resource.data.title is string
+                && request.resource.data.title.size() > 0
+                && request.resource.data.title.size() <= 120))
+        && (!('content' in request.resource.data.diff(resource.data).changedKeys())
+            || (request.resource.data.content is map
+                && request.resource.data.content.type == 'single'
+                && request.resource.data.content.body is string
+                && request.resource.data.content.body.size() > 0
+                && request.resource.data.content.body.size() <= 50000))
+        && (!('tags' in request.resource.data.diff(resource.data).changedKeys())
+            || (request.resource.data.tags is list && request.resource.data.tags.size() <= 10))
+        && (!('coverUrl' in request.resource.data.diff(resource.data).changedKeys())
+            || (request.resource.data.coverUrl == null || request.resource.data.coverUrl is string))
+        && (!('status' in request.resource.data.diff(resource.data).changedKeys())
+            || (request.resource.data.status in ['draft','published']))
+        && (!('visibility' in request.resource.data.diff(resource.data).changedKeys())
+            || (request.resource.data.visibility in ['public','unlisted','private']));
+      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if request.auth != null
+          && request.resource.data.keys().hasOnly(['authorId','body','createdAt'])
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 2000;
+        allow update: if request.auth != null
+          && resource.data.authorId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['body'])
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 2000;
+        allow delete: if request.auth != null
+          && (resource.data.authorId == request.auth.uid
+              || get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid);
+      }
+
+      match /reactions/{uid} {
+        allow read: if true;
+        allow create: if request.auth != null
+          && uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['type','createdAt'])
+          && request.resource.data.type in ['heart','like','fire','sad','wow'];
+        allow update: if request.auth != null
+          && uid == request.auth.uid
+          && request.resource.data.type in ['heart','like','fire','sad','wow']
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['type']);
+        allow delete: if request.auth != null
+          && (uid == request.auth.uid
+              || get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid);
+      }
+    }
+
+    // --------- FORUMS ---------
+    match /threads/{threadId} {
+
+      function isSignedIn() { return request.auth != null; }
+      function isAdmin()    { return isSignedIn() && request.auth.token.email == "markcidricpablo@gmail.com"; }
+      function isOwner()    { return isSignedIn() && resource.data.authorId == request.auth.uid; }
+      function short(field, max) { return field is string && field.size() > 0 && field.size() <= max; }
+      function validCategory(c) {
+        return c is string && (c == 'general' || c == 'mobile' || c == 'web' || c == 'media' || c == 'tech' || c == 'gaming' || c == 'lounge');
+      }
+      // ✅ Replace your current validTags with this one
+function validTags(tags) {
+  return tags == null
+    || (
+      tags is list
+      && tags.size() <= 5
+      // check each possible slot only if it exists
+      && (tags.size() < 1 || (tags[0] is string && tags[0].size() > 0 && tags[0].size() <= 24))
+      && (tags.size() < 2 || (tags[1] is string && tags[1].size() > 0 && tags[1].size() <= 24))
+      && (tags.size() < 3 || (tags[2] is string && tags[2].size() > 0 && tags[2].size() <= 24))
+      && (tags.size() < 4 || (tags[3] is string && tags[3].size() > 0 && tags[3].size() <= 24))
+      && (tags.size() < 5 || (tags[4] is string && tags[4].size() > 0 && tags[4].size() <= 24))
+    );
+}
+
+      function isCounterUpdate() {
+        return request.resource.data.diff(resource.data).changedKeys().hasOnly(['replyCount','lastReplyAt','updatedAt'])
+          && request.resource.data.replyCount is int
+          && (request.resource.data.replyCount == resource.data.replyCount + 1
+              || request.resource.data.replyCount == resource.data.replyCount - 1);
+      }
+
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'title','body','tags','category',
+          'authorId','authorName','authorPhoto',
+          'createdAt','updatedAt','replyCount','lastReplyAt'
+        ])
+        && request.resource.data.authorId == request.auth.uid
+        && short(request.resource.data.title, 120)
+        && short(request.resource.data.body, 20000)
+        && validCategory(request.resource.data.category)
+        && validTags(request.resource.data.tags)
+        && (request.resource.data.authorName == null || request.resource.data.authorName is string)
+        && (request.resource.data.authorPhoto == null || request.resource.data.authorPhoto is string)
+        && request.resource.data.replyCount == 0;
+
+      allow update: if (
+          (isOwner() || isAdmin())
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+               'title','body','tags','category','authorName','authorPhoto','updatedAt','replyCount','lastReplyAt'
+             ])
+          && (!('title' in request.resource.data.diff(resource.data).changedKeys()) || short(request.resource.data.title, 120))
+          && (!('body' in request.resource.data.diff(resource.data).changedKeys())  || short(request.resource.data.body, 20000))
+          && (!('category' in request.resource.data.diff(resource.data).changedKeys()) || validCategory(request.resource.data.category))
+          && (!('tags' in request.resource.data.diff(resource.data).changedKeys()) || validTags(request.resource.data.tags))
+        ) || (isSignedIn() && isCounterUpdate());
+
+      allow delete: if isOwner() || isAdmin();
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isSignedIn()
+          && request.resource.data.keys().hasOnly(['authorId','authorName','authorPhoto','body','createdAt'])
+          && request.resource.data.authorId == request.auth.uid
+          && short(request.resource.data.body, 10000)
+          && (request.resource.data.authorName == null || request.resource.data.authorName is string)
+          && (request.resource.data.authorPhoto == null || request.resource.data.authorPhoto is string);
+        allow update: if false;
+        allow delete: if
+          (isSignedIn() && resource.data.authorId == request.auth.uid)
+          || isAdmin()
+          || (isSignedIn() && get(/databases/$(database)/documents/threads/$(threadId)).data.authorId == request.auth.uid);
+      }
+    }
+
+    // --- products (unchanged) ---
+    match /products/{id} {
+      function isSignedIn() { return request.auth != null; }
+      function isOwner()    { return isSignedIn() && resource.data.ownerUid == request.auth.uid; }
+      function isAdmin()    { return isSignedIn() && request.auth.token.email == "markcidricpablo@gmail.com"; }
+      allow read: if true;
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'title','category','pricePhp','store',
+          'imageUrl','affiliateUrl','blurb',
+          'ownerUid','ownerName',
+          'complianceAck','createdAt','updatedAt'
+        ])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.complianceAck == true
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.imageUrl is string
+        && request.resource.data.affiliateUrl is string
+        && (request.resource.data.category == null || request.resource.data.category is string)
+        && (request.resource.data.pricePhp == null || request.resource.data.pricePhp is number)
+        && (request.resource.data.store == null || request.resource.data.store is string)
+        && (request.resource.data.blurb == null || (request.resource.data.blurb is string && request.resource.data.blurb.size() <= 1000));
+      allow update: if isAdmin()
+        || (isOwner()
+          && !('ownerUid' in request.resource.data)
+          && request.resource.data.keys().hasOnly([
+            'title','category','pricePhp','store',
+            'imageUrl','affiliateUrl','blurb',
+            'ownerUid','ownerName',
+            'complianceAck','updatedAt'
+          ])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && request.resource.data.imageUrl is string
+          && request.resource.data.affiliateUrl is string
+          && (request.resource.data.pricePhp == null || request.resource.data.pricePhp is number)
+          && (request.resource.data.blurb == null || (request.resource.data.blurb is string && request.resource.data.blurb.size() <= 1000)));
+      allow delete: if isOwner() || isAdmin();
+    }
+
+    // collection-group reads
+    match /{anyPath=**}/comments/{commentId} { allow read: if true; }
+    match /{anyPath=**}/reactions/{uid}     { allow read: if true; }
+  }
+}

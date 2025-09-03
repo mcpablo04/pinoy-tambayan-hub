@@ -1,4 +1,3 @@
-// src/pages/_app.tsx
 import "../styles/globals.css";
 import type { AppProps } from "next/app";
 import Script from "next/script";
@@ -11,6 +10,7 @@ import { PlayerProvider } from "../context/PlayerContext";
 import { AuthProvider } from "../context/AuthContext";
 
 import { useRouter } from "next/router";
+import { Toaster } from "react-hot-toast";
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -37,11 +37,10 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           crossOrigin="anonymous"
         />
 
-        {/* `isolate` helps avoid odd ancestor effects */}
         <div className="app-shell isolate">
           <NavBar />
 
-          {/* Desktop gets padding to clear fixed header; mobile doesn't (handled by NavBar spacer) */}
+          {/* Desktop gets padding to clear fixed header; mobile handled by NavBar spacer */}
           <main
             className="flex-grow md:pt-24 px-4 md:px-6 max-w-6xl mx-auto w-full overflow-anchor-none"
             key={router.asPath}
@@ -52,6 +51,24 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           <Footer />
           <GlobalPlayer />
         </div>
+
+        {/* Global toaster – aligned top-right, under the fixed navbar */}
+        <Toaster
+          position="top-right"
+          reverseOrder={false}
+          gutter={10}
+          containerStyle={{ top: 88, right: 16 }}
+          toastOptions={{
+            style: {
+              background: "#121722",
+              color: "#e5e7eb",
+              border: "1px solid #374151",
+              boxShadow: "0 10px 30px rgba(0,0,0,.35)",
+            },
+            success: { iconTheme: { primary: "#22c55e", secondary: "#121722" } },
+            error: { iconTheme: { primary: "#ef4444", secondary: "#121722" } },
+          }}
+        />
       </PlayerProvider>
     </AuthProvider>
   );

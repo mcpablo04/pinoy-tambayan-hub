@@ -13,6 +13,7 @@ const LINKS = [
   { label: "Weather", href: "/weather", icon: "⛅" },
   { label: "Events", href: "/events", icon: "📅" },
   { label: "News", href: "/news", icon: "📰" },
+  { label: "Forums", href: "/forums", icon: "💬" }, // ← added
   { label: "Marketplace", href: "/marketplace", icon: "🛍️" },
   { label: "Stories", href: "/stories", icon: "✍️" },
   { label: "Tools", href: "/tools", icon: "🛠️" },
@@ -30,21 +31,22 @@ export default function NavBar() {
 
   const photo = profile?.photoURL || user?.photoURL || null;
   const displayName = profile?.displayName || user?.displayName || "Profile";
+
   const isActive = (href: string) =>
     router.pathname === href || (href !== "/" && router.pathname.startsWith(href));
 
-  // --- shrinking brand header (same as before) ---
+  // --- shrinking brand header ---
   const brandRef = useRef<HTMLDivElement | null>(null);
   const [brandH, setBrandH] = useState(56);
 
   useLayoutEffect(() => {
     const measure = () => {
       const h = Math.round(brandRef.current?.getBoundingClientRect().height || 56);
-      if (h) setBrandH(h);
+      if (h && h !== brandH) setBrandH(h);
     };
     measure();
     let ro: ResizeObserver | null = null;
-    if ("ResizeObserver" in window && brandRef.current) {
+    if (typeof window !== "undefined" && "ResizeObserver" in window && brandRef.current) {
       ro = new ResizeObserver(measure);
       ro.observe(brandRef.current);
     } else {
@@ -54,6 +56,7 @@ export default function NavBar() {
       if (ro && brandRef.current) ro.unobserve(brandRef.current);
       window.removeEventListener("resize", measure);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [progress, setProgress] = useState(0);
@@ -79,23 +82,23 @@ export default function NavBar() {
   // --- More sheet state ---
   const [showMore, setShowMore] = useState(false);
   useEffect(() => {
-    // Close the sheet on route change
     const close = () => setShowMore(false);
     router.events.on("routeChangeStart", close);
     return () => router.events.off("routeChangeStart", close);
   }, [router.events]);
 
-  // Body scroll lock while sheet is open (simple + safe)
+  // Body scroll lock while sheet is open
   useEffect(() => {
-    if (showMore) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = prev; };
-    }
+    if (!showMore) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, [showMore]);
 
-  const mobilePrimary = LINKS.filter(l => PRIMARY_MOBILE.includes(l.label));
-  const mobileMore = LINKS.filter(l => !PRIMARY_MOBILE.includes(l.label));
+  const mobilePrimary = LINKS.filter((l) => PRIMARY_MOBILE.includes(l.label));
+  const mobileMore = LINKS.filter((l) => !PRIMARY_MOBILE.includes(l.label));
 
   /* ---------------- MOBILE ---------------- */
   const MobileHeader = () => (
@@ -126,7 +129,7 @@ export default function NavBar() {
             }}
           >
             <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3 pointer-events-auto">
-              <Link href="/" scroll className="flex items-center gap-3 text-white font-bold">
+              <Link href="/" scroll className="flex items-center gap-3 text-white font-bold" aria-current={isActive("/") ? "page" : undefined}>
                 <Image
                   src="/brand/pt-hub-logo.png"
                   alt="Pinoy Tambayan Hub"
@@ -159,7 +162,7 @@ export default function NavBar() {
             </div>
           </div>
 
-          {/* ICON BAR — no swipe; 5 primary + More */}
+          {/* ICON BAR — 5 primary + More */}
           <div className="absolute left-0 right-0 border-t border-gray-800 z-20" style={{ bottom: 0, height: ICON_BAR_H }}>
             <div className="max-w-6xl mx-auto px-1 h-full">
               <nav className="h-full" aria-label="Primary">
@@ -175,6 +178,7 @@ export default function NavBar() {
                             active ? "bg-gray-800 text-white" : "text-gray-200 hover:bg-gray-800/60"
                           }`}
                           aria-label={label}
+                          aria-current={active ? "page" : undefined}
                           title={label}
                         >
                           <span className="text-2xl leading-none">{icon}</span>
@@ -220,12 +224,7 @@ export default function NavBar() {
 
       {/* Bottom Sheet for "More" */}
       {showMore && (
-        <div
-          id="more-sheet"
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-[80]"
-        >
+        <div id="more-sheet" role="dialog" aria-modal="true" className="fixed inset-0 z-[80]">
           {/* Backdrop */}
           <button
             aria-label="Close More"
@@ -241,15 +240,11 @@ export default function NavBar() {
             <div className="mx-auto h-1 w-10 rounded-full bg-white/15 mb-3" />
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-sm font-semibold text-gray-200">More</h2>
-              <button
-                onClick={() => setShowMore(false)}
-                className="text-sm text-gray-300 hover:text-white"
-              >
+              <button onClick={() => setShowMore(false)} className="text-sm text-gray-300 hover:text-white">
                 Close
               </button>
             </div>
 
-            {/* Show the remaining links (and you can include all if you prefer) */}
             <ul className="grid grid-cols-4 gap-2">
               {mobileMore.map(({ label, href, icon }) => (
                 <li key={href}>
@@ -258,6 +253,7 @@ export default function NavBar() {
                     scroll
                     className="flex flex-col items-center justify-center gap-1 rounded-xl border border-white/10 bg-gray-800/60 hover:bg-gray-800 p-3 text-center text-gray-100"
                     onClick={() => setShowMore(false)}
+                    aria-current={isActive(href) ? "page" : undefined}
                   >
                     <span className="text-2xl leading-none">{icon}</span>
                     <span className="text-xs leading-tight">{label}</span>
@@ -265,8 +261,6 @@ export default function NavBar() {
                 </li>
               ))}
             </ul>
-
-            {/* Optional extra: add quick actions here in the future */}
           </div>
         </div>
       )}
@@ -277,7 +271,7 @@ export default function NavBar() {
   const DesktopHeader = () => (
     <header className="hidden md:block fixed inset-x-0 top-0 z-50 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800">
       <div className="max-w-6xl mx-auto flex items-center justify-between px-4 pt-3 pb-2">
-        <Link href="/" scroll className="flex items-center gap-3 text-white font-bold">
+        <Link href="/" scroll className="flex items-center gap-3 text-white font-bold" aria-current={isActive("/") ? "page" : undefined}>
           <Image
             src="/brand/pt-hub-logo.png"
             alt="Pinoy Tambayan Hub"
@@ -310,7 +304,7 @@ export default function NavBar() {
         </div>
       </div>
 
-      <nav className="max-w-6xl mx-auto flex items-center gap-1 px-3 pb-3">
+      <nav className="max-w-6xl mx-auto flex items-center gap-1 px-3 pb-3" aria-label="Primary">
         {LINKS.map(({ label, href }) => {
           const active = isActive(href);
           return (
@@ -318,6 +312,7 @@ export default function NavBar() {
               key={href}
               href={href}
               scroll
+              aria-current={active ? "page" : undefined}
               className={`px-3 py-1.5 rounded-md text-sm transition-colors outline-none ${
                 active
                   ? "text-white bg-gray-800 ring-1 ring-white/10"
