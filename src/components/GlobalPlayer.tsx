@@ -21,7 +21,7 @@ export default function GlobalPlayer() {
     setStation,
     showUI,
     setShowUI,
-    playOnLoadKey, // ← important for auto-play on click
+    playOnLoadKey, // ← triggers RadioPlayer auto-play once per mount
   } = usePlayer();
 
   const router = useRouter();
@@ -62,7 +62,7 @@ export default function GlobalPlayer() {
             </button>
             <button
               onClick={() => setStation(next, true)}
-              className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-gray-100"
+              className="p-1.5 rounded bg白e/10 hover:bg-white/20 text-gray-100"
               aria-label="Next"
               title="Next"
             >

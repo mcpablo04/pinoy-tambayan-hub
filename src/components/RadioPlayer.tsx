@@ -1,8 +1,7 @@
-// src/components/RadioPlayer.tsx
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
-import { Play, Pause, Volume2, Loader2, RotateCcw } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { Play, Pause, Volume2 } from "lucide-react";
 
 export interface Station {
   id: string;
@@ -14,7 +13,7 @@ export interface Station {
 export interface RadioPlayerProps {
   station: Station;
   hideTitle?: boolean;
-  /** When this number changes, the player will attempt to start immediately */
+  /** bump this key (from context) to force auto-play, e.g. on next/prev */
   playOnLoadKey?: number;
 }
 
@@ -24,19 +23,51 @@ export default function RadioPlayer({
   playOnLoadKey,
 }: RadioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
-
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Persisted volume (default 0.5)
+  // Persisted volume
   const [volume, setVolume] = useState(() => {
     if (typeof window === "undefined") return 0.5;
     const saved = window.localStorage.getItem("pth_volume");
     return saved ? Math.min(1, Math.max(0, Number(saved))) : 0.5;
   });
 
-  // keep volume in sync & persist it
+  // Track last key to avoid duplicate autoplay triggers
+  const lastKeyRef = useRef<number | undefined>(undefined);
+
+  const stopOtherAudios = () => {
+    if (typeof document === "undefined") return;
+    const me = audioRef.current;
+    document.querySelectorAll("audio").forEach((el) => {
+      if (el !== me) {
+        try { (el as HTMLAudioElement).pause(); } catch {}
+        try { (el as HTMLAudioElement).src = ""; (el as HTMLAudioElement).load(); } catch {}
+      }
+    });
+  };
+
+  const killAudio = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    try { a.pause(); } catch {}
+    try { a.src = ""; a.load(); } catch {}
+    setPlaying(false);
+    setLoading(false);
+    setErr(null);
+  };
+
+  // On mount/unmount
+  useEffect(() => {
+    stopOtherAudios();
+    return () => {
+      killAudio();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Volume sync
   useEffect(() => {
     const a = audioRef.current;
     if (a) a.volume = volume;
@@ -45,99 +76,79 @@ export default function RadioPlayer({
     }
   }, [volume]);
 
-  // Load new station source WITHOUT autoplay (policy/UX friendly)
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-    setErr(null);
-    setLoading(false);
-    setPlaying(false);
-    a.src = station.url;
-    a.load();
-  }, [station]);
-
-  // Robust play with small retry/backoff
-  const startPlayback = useCallback(async () => {
-    const a = audioRef.current;
-    if (!a) return;
-
-    setErr(null);
-    setLoading(true);
-
-    const tryPlay = async (attempt: number): Promise<void> => {
-      try {
-        await a.play();
-        setPlaying(true);
-        setLoading(false);
-      } catch {
-        if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, (attempt + 1) * 500));
-          await tryPlay(attempt + 1);
-        } else {
-          setLoading(false);
-          setPlaying(false);
-          setErr("Couldn’t start the stream. Tap retry or check your connection.");
-        }
-      }
-    };
-
-    await tryPlay(0);
-  }, []);
-
-  const togglePlay = async () => {
-    const a = audioRef.current;
-    if (!a) return;
-
-    if (playing) {
-      a.pause();
-      setPlaying(false);
-    } else {
-      await startPlayback();
-    }
-  };
-
-  // Reflect network events
+  // Load new station (no autoplay here)
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
 
-    const onWaiting = () => setLoading(true);
-    const onPlaying = () => {
-      setLoading(false);
-      setErr(null);
-      setPlaying(true);
-    };
-    const onStalled = () => setLoading(true);
-    const onError = () => {
-      setLoading(false);
-      setPlaying(false);
-      setErr("Stream error. Try again.");
-    };
-    const onEnded = () => {
-      setPlaying(false);
-    };
+    killAudio();            // clean stop previous
+    stopOtherAudios();      // enforce singleton
+    a.src = station.url;    // set new src
+    a.load();               // prepare
+  }, [station.url]);
+
+  // Media event handlers -> keep status accurate
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+
+    const onWaiting = () => { setLoading(true); setErr(null); };
+    const onPlaying = () => { setLoading(false); setErr(null); setPlaying(true); };
+    const onStalled  = () => { setLoading(true); };
+    const onPause    = () => { setPlaying(false); };
+    const onEnded    = () => { setPlaying(false); setLoading(false); };
+    const onError    = () => { setLoading(false); setPlaying(false); setErr("Stream error. Try again."); };
 
     a.addEventListener("waiting", onWaiting);
     a.addEventListener("playing", onPlaying);
     a.addEventListener("stalled", onStalled);
-    a.addEventListener("error", onError);
+    a.addEventListener("pause", onPause);
     a.addEventListener("ended", onEnded);
+    a.addEventListener("error", onError);
 
     return () => {
       a.removeEventListener("waiting", onWaiting);
       a.removeEventListener("playing", onPlaying);
       a.removeEventListener("stalled", onStalled);
-      a.removeEventListener("error", onError);
+      a.removeEventListener("pause", onPause);
       a.removeEventListener("ended", onEnded);
+      a.removeEventListener("error", onError);
     };
   }, []);
 
-  // 🔑 NEW: whenever playOnLoadKey changes, start immediately (1-click play)
+  // Auto-play when the key from context bumps (e.g., next/prev or card click)
   useEffect(() => {
     if (playOnLoadKey === undefined) return;
-    // if the key changed, we intend to start playback now
-    startPlayback();
-  }, [playOnLoadKey, startPlayback]);
+    if (lastKeyRef.current === playOnLoadKey) return; // already handled this key
+    lastKeyRef.current = playOnLoadKey;
+
+    const a = audioRef.current;
+    if (!a) return;
+
+    setErr(null);
+    setLoading(true);
+    stopOtherAudios();
+    a.play()
+      .then(() => { setPlaying(true); setLoading(false); })
+      .catch(() => { setPlaying(false); setLoading(false); setErr("Couldn’t start the stream."); });
+  }, [playOnLoadKey]);
+
+  const togglePlay = () => {
+    const a = audioRef.current;
+    if (!a) return;
+
+    if (playing) {
+      a.pause();
+      // onPause handler will setPlaying(false)
+    } else {
+      setErr(null);
+      setLoading(true);
+      stopOtherAudios();
+      a.play()
+        .then(() => { setPlaying(true); setLoading(false); })
+        .catch(() => { setPlaying(false); setLoading(false); setErr("Couldn’t start the stream."); });
+    }
+  };
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
@@ -148,32 +159,9 @@ export default function RadioPlayer({
       )}
 
       <div className="flex items-center gap-3">
-        <button
-          onClick={togglePlay}
-          className="p-2 bg-blue-600 rounded-full transition disabled:opacity-60"
-          disabled={loading}
-          aria-label={playing ? "Pause" : "Play"}
-          title={playing ? "Pause" : "Play"}
-        >
-          {loading ? (
-            <Loader2 className="w-5 h-5 text-white animate-spin" />
-          ) : playing ? (
-            <Pause className="w-5 h-5 text-white" />
-          ) : (
-            <Play className="w-5 h-5 text-white" />
-          )}
+        <button onClick={togglePlay} className="p-2 bg-blue-600 rounded-full transition">
+          {playing ? <Pause className="w-5 h-5 text-white" /> : <Play className="w-5 h-5 text-white" />}
         </button>
-
-        {err && (
-          <button
-            onClick={startPlayback}
-            className="inline-flex items-center gap-2 px-2 py-1 text-xs rounded bg-gray-700 text-gray-100 hover:bg-gray-600"
-            title="Retry"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Retry
-          </button>
-        )}
 
         <div className="flex items-center gap-2">
           <Volume2 className="w-4 h-4 text-white" />
@@ -190,6 +178,7 @@ export default function RadioPlayer({
         </div>
       </div>
 
+      {/* 👇 Buffering/Status line */}
       <div className="text-xs text-gray-400 min-h-[1rem]">
         {loading ? "Buffering…" : err ? err : playing ? "Live" : "Ready"}
       </div>

@@ -1,7 +1,7 @@
 // src/components/ChatBox.tsx
 "use client";
 
-import { useEffect, useRef, useState, FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, FormEvent } from "react";
 import Link from "next/link";
 import {
   collection,
@@ -28,17 +28,17 @@ type Msg = {
 export default function ChatBox() {
   const { user, profile, loading } = useAuth();
 
-  const [name, setName] = useState("");
+  // Fixed, non-editable display name. If empty, user must set it in their profile.
+  const displayName = useMemo(
+    () => (profile?.displayName || user?.displayName || "").trim(),
+    [profile?.displayName, user?.displayName]
+  );
+
   const [text, setText] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const display = profile?.displayName || user?.displayName || "";
-    if (display && !name) setName(display);
-  }, [profile?.displayName, user?.displayName, name]);
 
   // Hard pin to bottom (instant — no smooth)
   const hardScrollToBottom = () => {
@@ -89,26 +89,20 @@ export default function ChatBox() {
     e.preventDefault();
     setErr(null);
 
-    const trimmedName = name.trim().slice(0, 40);
+    // Require sign-in and a valid (non-empty) display name
+    if (!user || !displayName) return;
+
     const trimmedText = text.trim().slice(0, 500);
-    if (!trimmedName || !trimmedText) return;
+    if (!trimmedText) return;
 
     try {
-      if (user) {
-        await addDoc(collection(db, "messages"), {
-          uid: user.uid,
-          name: trimmedName,
-          photoURL: user.photoURL || profile?.photoURL || null,
-          text: trimmedText,
-          createdAt: serverTimestamp(),
-        });
-      } else {
-        await addDoc(collection(db, "messages"), {
-          name: trimmedName,
-          text: trimmedText,
-          createdAt: serverTimestamp(),
-        });
-      }
+      await addDoc(collection(db, "messages"), {
+        uid: user.uid,
+        name: displayName.slice(0, 40),
+        photoURL: user.photoURL || profile?.photoURL || null,
+        text: trimmedText,
+        createdAt: serverTimestamp(),
+      });
 
       setText("");
       hardScrollToBottom();
@@ -117,27 +111,32 @@ export default function ChatBox() {
     }
   }
 
-  const disabled = loading && !user;
+  const disabled = loading || !user;
   const mePhoto = user?.photoURL || profile?.photoURL || undefined;
-  const meInitial = (profile?.displayName || user?.displayName || name || "?")
-    .charAt(0)
-    .toUpperCase();
+  const meInitial = (displayName || "?").charAt(0).toUpperCase();
 
   return (
-    <div className="rounded-xl bg-gray-800/80 p-4 sm:p-6 shadow-lg border border-gray-700">
-      <h3 className="text-lg font-semibold mb-3 sm:mb-4">Live Chat</h3>
+    <div className="rounded-2xl bg-gradient-to-b from-gray-900/90 to-gray-950/90 p-4 sm:p-6 shadow-xl border border-gray-800">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="relative h-2.5 w-2.5">
+          <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+          <div className="absolute inset-0 animate-ping rounded-full bg-emerald-500/30" />
+        </div>
+        <h3 className="text-lg font-semibold tracking-tight">Live Chat</h3>
+      </div>
 
       {/* Fixed-height scroll area */}
       <div
         ref={listRef}
-        className="rounded-md bg-gray-900/60 border border-gray-700 p-3 sm:p-4
-                   h-80 sm:h-96 overflow-y-auto min-h-0 pb-2"
+        className="rounded-xl bg-gray-950/60 border border-gray-800 p-3 sm:p-4
+                   h-80 sm:h-96 overflow-y-auto min-h-0"
       >
         <ul className="space-y-3 text-sm sm:text-base">
           {messages.map((m) => (
             <li key={m.id} className="flex items-start gap-3">
               {m.photoURL ? (
-                <div className="avatar avatar-sm">
+                <div className="avatar avatar-sm shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={m.photoURL} alt={m.name} draggable={false} loading="lazy" />
                 </div>
               ) : (
@@ -154,51 +153,69 @@ export default function ChatBox() {
         </ul>
       </div>
 
-      {/* Input row */}
-      <form
-        onSubmit={onSend}
-        className="mt-3 sm:mt-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
-      >
-        <div className="flex items-center gap-2 sm:gap-3">
-          {mePhoto ? (
-            <div className="avatar avatar-md">
-              <img src={mePhoto} alt="You" draggable={false} />
+      {/* Composer */}
+      <div className="mt-3 sm:mt-4">
+        {!user ? (
+          // Sign-in gate (no guest posting)
+          <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4 text-sm text-gray-300">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="avatar avatar-md grid place-items-center text-sm text-gray-300">?</div>
+                <div>
+                  <div className="font-medium">Sign in to join the chat</div>
+                  <div className="text-xs text-gray-400">Only signed-in users can send messages.</div>
+                </div>
+              </div>
+              <Link
+                href="/login"
+                className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                Sign In
+              </Link>
             </div>
-          ) : (
-            <div className="avatar avatar-md grid place-items-center text-sm text-gray-300">
-              {meInitial}
+          </div>
+        ) : (
+          <form
+            onSubmit={onSend}
+            className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
+          >
+            <div className="flex items-center gap-2 sm:gap-3">
+              {mePhoto ? (
+                <div className="avatar avatar-md shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={mePhoto} alt="You" draggable={false} />
+                </div>
+              ) : (
+                <div className="avatar avatar-md grid place-items-center text-sm text-gray-300">
+                  {meInitial}
+                </div>
+              )}
+              <span className="rounded-md bg-gray-800/80 text-gray-200 text-xs px-2 py-1 border border-white/10">
+                {displayName || "Unnamed"}
+              </span>
             </div>
-          )}
-        </div>
 
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Your name"
-          disabled={disabled}
-          className="w-full sm:w-40 rounded-md bg-gray-700/90 text-white px-3 py-2 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-        />
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={user ? "Message..." : "Message (guest)"}
-          disabled={disabled}
-          className="flex-1 rounded-md bg-gray-700/90 text-white px-3 py-2 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-        />
-        <button
-          type="submit"
-          className="shrink-0 rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
-        >
-          Send
-        </button>
-      </form>
+            {/* Name removed (locked). Message input only. */}
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Type a message…"
+              disabled={disabled}
+              maxLength={500}
+              className="flex-1 rounded-md bg-gray-800/80 text-white px-3 py-2 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+            />
 
-      {!user && !loading && (
-        <div className="mt-2 text-xs text-gray-400">
-          Want your avatar & name auto-filled?{" "}
-          <Link href="/login" className="underline">Sign in</Link>.
-        </div>
-      )}
+            <button
+              type="submit"
+              disabled={disabled || !text.trim()}
+              className="shrink-0 rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </form>
+        )}
+      </div>
+
       {err && <div className="mt-2 text-sm text-amber-300">{err}</div>}
     </div>
   );
