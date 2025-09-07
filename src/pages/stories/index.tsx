@@ -44,7 +44,6 @@ const fmtDate = (ts?: Timestamp) => {
   }
 };
 
-/** Skeleton card */
 function SkeletonStoryCard() {
   return (
     <li className="rounded-xl border border-white/10 bg-white/5 p-4">
@@ -74,7 +73,6 @@ export default function StoriesFeed() {
 
   const baseQuery = useCallback(() => query(collection(db, "stories"), orderBy("createdAt", "desc")), []);
 
-  // ✅ Simple, reliable scroll-to-top (no offset math)
   const hardScrollToTop = useCallback(() => {
     try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
     try { document.scrollingElement && (document.scrollingElement.scrollTop = 0); } catch {}
@@ -151,7 +149,6 @@ export default function StoriesFeed() {
     }
 
     setLoading(false);
-    // ✅ Just go to the real top; the header spacer already accounts for fixed header height
     requestAnimationFrame(hardScrollToTop);
   }
 

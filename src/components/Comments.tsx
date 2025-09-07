@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   collection,
@@ -8,13 +8,16 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   startAfter,
   setDoc,
+  updateDoc,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
@@ -23,8 +26,8 @@ import { useAuth } from "../context/AuthContext";
 
 /* ----------------- types ----------------- */
 type FireTs = { toDate?: () => Date; seconds?: number } | null | undefined;
-type Comment = { id: string; authorId: string; body: string; createdAt?: FireTs };
-type Notify = (kind: "success" | "error" | "info", text: string) => void;
+export type Comment = { id: string; authorId: string; body: string; createdAt?: FireTs };
+export type Notify = (kind: "success" | "error" | "info", text: string) => void;
 
 type Props = {
   storyId: string;
@@ -144,6 +147,9 @@ export default function Comments({
   const [authors, setAuthors] = useState<Record<string, string>>({});
   const [storyOwner, setStoryOwner] = useState<string | null>(null);
 
+  // simple spam guard
+  const lastSubmitRef = useRef<number>(0);
+
   // Confirm modal state
   const [confirm, setConfirm] = useState<ConfirmState>({
     open: false,
@@ -151,17 +157,19 @@ export default function Comments({
     message: "",
   });
 
+  const storyRef = useMemo(() => doc(db, "stories", storyId), [storyId]);
+
   // who owns the story (so owner can delete any comment)
   useEffect(() => {
     (async () => {
       try {
-        const s = await getDoc(doc(db, "stories", storyId));
+        const s = await getDoc(storyRef);
         setStoryOwner((s.data()?.authorId as string) ?? null);
       } catch {
         setStoryOwner(null);
       }
     })();
-  }, [storyId]);
+  }, [storyRef]);
 
   // live first page
   useEffect(() => {
@@ -264,22 +272,44 @@ export default function Comments({
     if (!user?.uid) { notify?.("error", "Please log in to comment."); return; }
     if (!body) return;
 
+    // throttle a bit
+    const now = Date.now();
+    if (now - lastSubmitRef.current < 600) return;
+    lastSubmitRef.current = now;
+
     setText("");
 
-    const ref = doc(collection(db, "stories", storyId, "comments"));
-    setItems((prev) => [{ id: ref.id, authorId: user.uid, body, createdAt: null }, ...prev]);
+    const cRef = doc(collection(db, "stories", storyId, "comments"));
+    // optimistic UI
+    setItems((prev) => [{ id: cRef.id, authorId: user.uid, body, createdAt: null }, ...prev]);
 
     try {
-      await setDoc(ref, { authorId: user.uid, body, createdAt: serverTimestamp() });
+      // 🔐 match rules: only these fields
+      await setDoc(cRef, {
+        authorId: user.uid,
+        parentKind: "story",
+        body,
+        createdAt: serverTimestamp(),
+      });
+
+      // bump story comment counter (best-effort; allowed by countsBumpOnly for any authed user)
+      try {
+        await updateDoc(storyRef, {
+          "counts.comments": increment(1),
+          updatedAt: serverTimestamp(),
+        });
+      } catch { /* ignore */ }
+
       onPosted?.();
       notify?.("success", "Comment posted");
-    } catch {
-      setItems((prev) => prev.filter((c) => c.id !== ref.id));
+    } catch (err) {
+      // roll back optimistic item
+      setItems((prev) => prev.filter((c) => c.id !== cRef.id));
       notify?.("error", "Failed to post comment.");
     }
   };
 
-  // delete (author OR story owner) with pretty confirm
+  // delete (author OR story owner) with pretty confirm and safe decrement
   const remove = async (cid: string) => {
     if (!user?.uid) return;
     const c = items.find((i) => i.id === cid);
@@ -296,12 +326,29 @@ export default function Comments({
     });
     if (!ok) return;
 
+    // optimistic remove
+    const prevItems = items;
+    setItems((prev) => prev.filter((i) => i.id !== cid));
+
     try {
       await deleteDoc(doc(db, "stories", storyId, "comments", cid));
-      setItems((prev) => prev.filter((i) => i.id !== cid));
+
+      // safe decrement (never below 0)
+      try {
+        await runTransaction(db, async (tx) => {
+          const s = await tx.get(storyRef);
+          if (!s.exists()) return;
+          const current = ((s.data()?.counts?.comments as number) ?? 0) | 0;
+          const next = Math.max(0, current - 1);
+          tx.update(storyRef, { "counts.comments": next, updatedAt: serverTimestamp() });
+        });
+      } catch { /* ignore */ }
+
       onDeleted?.();
       notify?.("success", "Comment deleted");
     } catch {
+      // revert optimistic removal
+      setItems(prevItems);
       notify?.("error", "Failed to delete comment.");
     }
   };

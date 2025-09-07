@@ -12,14 +12,15 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
-  getDocs,
   increment,
+  limit as fsLimit,
+  onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
-  limit as fsLimit,
+  getDocs,
 } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
 import CommentItem, { Comment } from "../../components/Forum/Comment";
@@ -69,6 +70,7 @@ export default function ThreadDetail() {
   const lastSubmitRef = useRef<number>(0);
   const endRef = useRef<HTMLDivElement>(null);
 
+  // Right-rail lists
   useEffect(() => {
     (async () => {
       const featSnap = await getDocs(
@@ -82,23 +84,39 @@ export default function ThreadDetail() {
     })();
   }, []);
 
+  // Real-time thread doc + comments
   useEffect(() => {
     if (!id) return;
-    (async () => {
-      setLoading(true);
-      const tSnap = await getDoc(doc(db, "threads", id));
-      if (!tSnap.exists()) {
-        setThread(null);
-        setLoading(false);
-        return;
-      }
-      setThread({ id: tSnap.id, ...(tSnap.data() as any) });
 
-      const cSnap = await getDocs(query(collection(db, "threads", id, "comments"), orderBy("createdAt", "asc")));
-      setComments(cSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Comment[]);
-      setLoading(false);
+    setLoading(true);
+    const tRef = doc(db, "threads", id);
+    const cRef = collection(db, "threads", id, "comments");
+    const cQ = query(cRef, orderBy("createdAt", "asc"));
+
+    const unsubThread = onSnapshot(
+      tRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setThread(null);
+          setLoading(false);
+          return;
+        }
+        setThread({ id: snap.id, ...(snap.data() as any) });
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+
+    const unsubComments = onSnapshot(cQ, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Comment[];
+      setComments(list);
       setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 0);
-    })();
+    });
+
+    return () => {
+      unsubThread();
+      unsubComments();
+    };
   }, [id]);
 
   const postComment = async (e: React.FormEvent) => {
@@ -108,29 +126,30 @@ export default function ThreadDetail() {
     const body = text.trim();
     if (!body) return;
 
-    // basic debounce to avoid duplicate submits
     const now = Date.now();
     if (now - lastSubmitRef.current < 600) return;
     lastSubmitRef.current = now;
 
     setBusy(true);
     try {
+      // 🔐 match thread comment rules exactly (no parentId)
       const payload = {
         body,
         authorId: user.uid,
         authorName: profile?.displayName || user.displayName || "User",
         authorPhoto: profile?.photoURL || user.photoURL || "",
+        parentKind: "thread",
         createdAt: serverTimestamp(),
       };
 
-      const ref = await addDoc(collection(db, "threads", id, "comments"), payload);
+      await addDoc(collection(db, "threads", id, "comments"), payload);
+
       await updateDoc(doc(db, "threads", id), {
         replyCount: increment(1),
         lastReplyAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
-      setComments((prev) => [...prev, { id: ref.id, ...payload } as any]);
       setText("");
       toast.success("Reply posted");
       setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -154,11 +173,16 @@ export default function ThreadDetail() {
 
     try {
       await deleteDoc(doc(db, "threads", id, "comments", cid));
-      await updateDoc(doc(db, "threads", id), {
-        replyCount: increment(-1),
-        updatedAt: serverTimestamp(),
+
+      // safe decrement (never below 0)
+      const tRef = doc(db, "threads", id);
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(tRef);
+        if (!snap.exists()) return;
+        const current = (snap.data().replyCount as number) || 0;
+        tx.update(tRef, { replyCount: Math.max(0, current - 1), updatedAt: serverTimestamp() });
       });
-      setComments((prev) => prev.filter((c) => c.id !== cid));
+
       toast.success("Comment deleted");
     } catch (err: any) {
       console.error(err);
@@ -166,27 +190,19 @@ export default function ThreadDetail() {
     }
   };
 
-  const deleteThread = async () => {
-    if (!user || !thread) return;
-    const ok = await confirmToast({
-      title: "Delete this thread?",
-      description: "The thread will be removed from the forum.",
-      confirmText: "Delete thread",
-      variant: "destructive",
-    });
-    if (!ok) return;
-
-    setDeleting(true);
-    try {
-      await deleteDoc(doc(db, "threads", thread.id));
-      toast.success("Thread deleted");
-      router.push("/forums");
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err?.message || "Failed to delete thread.");
-    } finally {
-      setDeleting(false);
+  const cascadeDeleteThread = async (threadId: string) => {
+    // delete comments first, then the thread doc
+    const cCol = collection(db, "threads", threadId, "comments");
+    // batch delete in chunks
+    while (true) {
+      const snap = await getDocs(query(cCol, fsLimit(400)));
+      if (snap.empty) break;
+      const batch = (await import("firebase/firestore")).writeBatch(db);
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      if (snap.size < 400) break;
     }
+    await deleteDoc(doc(db, "threads", threadId));
   };
 
   if (loading) {
@@ -225,6 +241,9 @@ export default function ThreadDetail() {
   const desc = clip(thread.body || thread.title, 160);
   const canonical = `https://pinoytambayanhub.com/forums/${thread.id}`;
 
+  const repliesDisplay = Math.max(0, thread.replyCount ?? comments.length);
+  const repliesLabel = repliesDisplay === 1 ? "Reply" : "Replies";
+
   return (
     <>
       <Head>
@@ -242,17 +261,20 @@ export default function ThreadDetail() {
           <>
             <WidgetCard title="Featured content">
               <ul className="space-y-2">
-                {featured.map((t) => (
-                  <li key={t.id} className="flex flex-col gap-1">
-                    <Link href={`/forums/${t.id}`} className="text-sm text-gray-200 hover:text-white">
-                      {t.title}
-                    </Link>
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <CategoryPill cat={(t as any).category} />
-                      <span>{(t.replyCount ?? 0)} {(t.replyCount ?? 0) === 1 ? "reply" : "replies"}</span>
-                    </div>
-                  </li>
-                ))}
+                {featured.map((t) => {
+                  const cnt = Math.max(0, t.replyCount ?? 0);
+                  return (
+                    <li key={t.id} className="flex flex-col gap-1">
+                      <Link href={`/forums/${t.id}`} className="text-sm text-gray-200 hover:text-white">
+                        {t.title}
+                      </Link>
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <CategoryPill cat={(t as any).category} />
+                        <span>{cnt} {cnt === 1 ? "reply" : "replies"}</span>
+                      </div>
+                    </li>
+                  );
+                })}
                 {featured.length === 0 && <div className="text-sm text-gray-400">No featured threads yet.</div>}
               </ul>
             </WidgetCard>
@@ -283,19 +305,33 @@ export default function ThreadDetail() {
       >
         {/* top bar */}
         <div className="flex items-center justify-between gap-3 mb-1">
-          <Link href="/forums" className="text-sm text-gray-400 hover:text-gray-200">
-            ← Back
-          </Link>
+          <Link href="/forums" className="text-sm text-gray-400 hover:text-gray-200">← Back</Link>
           <div className="flex items-center gap-2">
-            <Link
-              href="/forums/new"
-              className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm font-medium"
-            >
+            <Link href="/forums/new" className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm font-medium">
               Post thread
             </Link>
             {canDeleteThread && (
               <button
-                onClick={deleteThread}
+                onClick={async () => {
+                  const ok = await confirmToast({
+                    title: "Delete this thread?",
+                    description: "The thread and its replies will be removed.",
+                    confirmText: "Delete thread",
+                    variant: "destructive",
+                  });
+                  if (!ok) return;
+                  setDeleting(true);
+                  try {
+                    await cascadeDeleteThread(thread.id);
+                    toast.success("Thread deleted");
+                    router.push("/forums");
+                  } catch (err: any) {
+                    console.error(err);
+                    toast.error(err?.message || "Failed to delete thread.");
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
                 disabled={deleting}
                 className="text-sm px-3 py-1.5 rounded-lg border border-red-700 text-red-300 hover:bg-red-900/30 disabled:opacity-60"
               >
@@ -326,10 +362,7 @@ export default function ThreadDetail() {
           <div className="mt-3 flex items-center gap-2">
             {thread.category && <CategoryPill cat={thread.category} />}
             {(thread.tags || []).map((tg) => (
-              <span
-                key={tg}
-                className="px-2 py-0.5 rounded-full text-xs bg-gray-800 text-gray-300 border border-gray-700"
-              >
+              <span key={tg} className="px-2 py-0.5 rounded-full text-xs bg-gray-800 text-gray-300 border border-gray-700">
                 #{tg}
               </span>
             ))}
@@ -345,12 +378,12 @@ export default function ThreadDetail() {
         {/* Replies */}
         <section>
           <h2 className="text-lg font-semibold text-gray-100 mt-2">
-            {thread.replyCount ?? comments.length} {(thread.replyCount ?? comments.length) === 1 ? "Reply" : "Replies"}
+            {repliesDisplay} {repliesLabel}
           </h2>
           <div className="mt-3 grid gap-3">
             {comments.map((c) => {
-              const canDelete = user?.uid === c.authorId || isAdmin || isThreadAuthor;
-              return <CommentItem key={c.id} c={c} canDelete={!!canDelete} onDelete={removeComment} />;
+              const canDelete = user?.uid === c.authorId || user?.email === ADMIN_EMAIL || user?.uid === thread.authorId;
+              return <CommentItem key={c.id} c={c} canDelete={!!canDelete} onDelete={(cid) => removeComment(cid)} />;
             })}
             <div ref={endRef} />
           </div>

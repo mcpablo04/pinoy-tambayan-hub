@@ -1,7 +1,36 @@
 {
   "indexes": [
+    
     {
-      "collectionGroup": "threads",
+      "collectionGroup": "comments",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "parentKind", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "comments",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "parentKind", "order": "ASCENDING" }
+      ]
+    },
+    
+    {
+      "collectionGroup": "comments",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+
+    
+    {
+      "collectionId": "threads",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "lastReplyAt", "order": "DESCENDING" },
@@ -9,7 +38,7 @@
       ]
     },
     {
-      "collectionGroup": "threads",
+      "collectionId": "threads",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "replyCount", "order": "DESCENDING" },
@@ -17,31 +46,60 @@
       ]
     },
     {
-      "collectionGroup": "threads",
+      "collectionId": "threads",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "category",   "order": "ASCENDING" },   
+        { "fieldPath": "category",   "order": "ASCENDING" },
+        { "fieldPath": "lastReplyAt","order": "DESCENDING" },
+        { "fieldPath": "createdAt",  "order": "DESCENDING" }
+      ]
+    },
+    
+    {
+      "collectionId": "threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tags",       "arrayConfig": "CONTAINS" },
         { "fieldPath": "lastReplyAt","order": "DESCENDING" },
         { "fieldPath": "createdAt",  "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "threads",
+      "collectionId": "threads",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tags",       "arrayConfig": "CONTAINS" }, 
+        { "fieldPath": "category",   "order": "ASCENDING" },
+        { "fieldPath": "tags",       "arrayConfig": "CONTAINS" },
         { "fieldPath": "lastReplyAt","order": "DESCENDING" },
         { "fieldPath": "createdAt",  "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "threads",
+      "collectionId": "threads",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "category",   "order": "ASCENDING" },      
-        { "fieldPath": "tags",       "arrayConfig": "CONTAINS" }, 
-        { "fieldPath": "lastReplyAt","order": "DESCENDING" },
-        { "fieldPath": "createdAt",  "order": "DESCENDING" }
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt","order": "DESCENDING" }
+      ]
+    },
+
+    
+    {
+      "collectionId": "stories",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authorId",  "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+
+    
+    {
+      "collectionId": "products",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerUid",  "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     }
   ],

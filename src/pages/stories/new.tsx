@@ -32,24 +32,22 @@ export default function NewStory() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // ----- Always land at the top when this page mounts -----
+  // Always land at the top when this page mounts
   useEffect(() => {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    // blur any focused element that might carry over from the last page
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
   }, []);
 
-  // ----- Simple local draft (autosave) -----
+  // Simple local draft (autosave)
   const draftKey = user?.uid
     ? `pthub:draft:story:${user.uid}`
     : "pthub:draft:story:anon";
 
-  // load existing draft on first mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem(draftKey);
@@ -64,7 +62,6 @@ export default function NewStory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
 
-  // save to localStorage whenever fields change
   useEffect(() => {
     try {
       const payload = JSON.stringify({ title, tags, body });
@@ -82,7 +79,7 @@ export default function NewStory() {
     }
   };
 
-  // Live-parse tags (same rules as submit)
+  // Live-parse tags
   const liveTagList = useMemo(() => {
     return Array.from(
       new Set(
@@ -110,7 +107,6 @@ export default function NewStory() {
     setSaving(true);
     try {
       const tagList = liveTagList;
-
       const p: Profile | null = profile ?? null;
 
       const base = {
@@ -118,7 +114,7 @@ export default function NewStory() {
         authorName: p?.displayName ?? user.displayName ?? "Anonymous",
         authorHandle: p?.handle ?? null,
         title: title.trim(),
-        slug: "", // set after we get the ID
+        slug: "",
         tags: tagList,
         coverUrl: null,
         content: { type: "single", body },
@@ -136,9 +132,7 @@ export default function NewStory() {
         updatedAt: serverTimestamp(),
       });
 
-      // clear local draft on success
       clearDraft();
-
       router.push(`/stories/${finalSlug}`);
     } catch (err: any) {
       console.error(err);
@@ -223,7 +217,6 @@ export default function NewStory() {
                 placeholder="romance, comedy, one-shot"
                 autoComplete="off"
               />
-              {/* Live tag preview */}
               {liveTagList.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {liveTagList.map((t) => (

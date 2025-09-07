@@ -85,7 +85,7 @@ type StoryDoc = {
   updatedAt?: Timestamp;
 };
 
-const SITE_URL = "https://pinoytambayanhub.com"; // adjust if different
+const SITE_URL = "https://pinoytambayanhub.com";
 
 const getIdFromSlug = (slugOrId: string) => slugOrId.split("-").pop() as string;
 const fmtDate = (ts?: Timestamp) => {
@@ -195,7 +195,6 @@ export default function StoryPage() {
   if (loading) {
     return (
       <>
-        {/* Minimal head while loading */}
         <Head>
           <title>Loading story… | Pinoy Tambayan Hub</title>
           <meta name="robots" content="noindex" />
@@ -258,13 +257,12 @@ export default function StoryPage() {
           <meta key={t} property="article:tag" content={t} />
         ))}
 
-        {/* Optional: keywords for classic crawlers */}
+        {/* Optional: keywords */}
         {tags.length > 0 && <meta name="keywords" content={tags.join(", ")} />}
 
-        {/* JSON-LD Article schema */}
+        {/* JSON-LD Article */}
         <script
           type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               "@context": "https://schema.org",
@@ -301,7 +299,7 @@ export default function StoryPage() {
 
           {/* Back + actions */}
           <div className="mb-4 sm:mb-6 flex items-center justify-between">
-            <Link href="/stories" className="inline-flex items-center gap-2 text-sm text-gray-300 hover:text-white px-2 py-1 -mx-2 rounded hover:bg-white/5">
+            <Link href="/stories" className="inline-flex items-center gap-2 text-sm text-gray-300 hover:text-white px-2 py-1 -mx-2 rounded hover:bg:white/5">
               <span aria-hidden>←</span> Back to Stories
             </Link>
 
@@ -350,7 +348,7 @@ export default function StoryPage() {
             </p>
           </div>
 
-          {/* Reactions — INLINE on all screens (no sticky footer) */}
+          {/* Reactions */}
           <div className="mt-6 sm:mt-8">
             <ReactionBar storyId={id} notify={pushToast} />
           </div>

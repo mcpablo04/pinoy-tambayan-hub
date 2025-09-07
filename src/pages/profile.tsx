@@ -25,10 +25,12 @@ import {
   orderBy,
   deleteDoc,
   writeBatch,
+  onSnapshot,
   type Timestamp,
-  type Query,
+  type Query as FsQuery,
   type CollectionReference,
   type DocumentData,
+  type FirestoreError,
 } from "firebase/firestore";
 import type { FirebaseError } from "firebase/app";
 import Skeleton from "../components/Skeleton";
@@ -174,7 +176,7 @@ type MyComment = {
   createdAt?: Timestamp;
 };
 
-/* ✅ NEW: product type */
+/* products */
 type MyProduct = {
   id: string;
   title: string;
@@ -183,6 +185,22 @@ type MyProduct = {
   pricePhp?: number | null;
   category?: string | null;
   store?: string | null;
+  createdAt?: Timestamp;
+};
+
+/* forum thread + reply types */
+type MyThread = {
+  id: string;
+  title: string;
+  category?: string | null;
+  replyCount?: number | null;
+  createdAt?: Timestamp;
+};
+
+type MyThreadReply = {
+  id: string;
+  body: string;
+  threadId: string;
   createdAt?: Timestamp;
 };
 
@@ -201,7 +219,7 @@ const toStoryLink = (id: string, slug?: string | null) =>
 
 /** Best-effort subcollection cleanup */
 async function deleteSubcollection(
-  col: CollectionReference<DocumentData> | Query<DocumentData>,
+  col: CollectionReference<DocumentData> | FsQuery<DocumentData>,
   batchSize = 400
 ) {
   // eslint-disable-next-line no-constant-condition
@@ -245,9 +263,11 @@ export default function ProfilePage() {
 
   // Stats
   const [storyCount, setStoryCount] = useState<number | null>(null);
-  const [commentCount, setCommentCount] = useState<number | null>(null);
+  const [commentCount, setCommentCount] = useState<number | null>(null); // story-only
+  const [repliesCount, setRepliesCount] = useState<number | null>(null); // forum replies total (realtime)
+  const [repliesCountLoading, setRepliesCountLoading] = useState(true);
 
-  // Lists + loading
+  // Lists + loading (stories/comments)
   const [stories, setStories] = useState<MyStory[]>([]);
   const [comments, setComments] = useState<MyComment[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
@@ -260,12 +280,24 @@ export default function ProfilePage() {
 
   const [countNote, setCountNote] = useState<string | null>(null);
 
-  /* ✅ NEW: products state */
+  /* products */
   const [products, setProducts] = useState<MyProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsLimit, setProductsLimit] = useState(INITIAL_LIMIT);
   const [productCount, setProductCount] = useState<number | null>(null);
   const [productsNote, setProductsNote] = useState<string | null>(null);
+
+  /* forum states */
+  const [threads, setThreads] = useState<MyThread[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(true);
+  const [threadsLimit, setThreadsLimit] = useState(INITIAL_LIMIT);
+  const [threadCount, setThreadCount] = useState<number | null>(null);
+  const [threadsNote, setThreadsNote] = useState<string | null>(null);
+
+  const [replies, setReplies] = useState<MyThreadReply[]>([]);
+  const [repliesLoading, setRepliesLoading] = useState(true);
+  const [repliesLimit, setRepliesLimit] = useState(INITIAL_LIMIT);
+  const [repliesNote, setRepliesNote] = useState<string | null>(null);
 
   // Redirect if not signed-in
   useEffect(() => {
@@ -458,7 +490,7 @@ export default function ProfilePage() {
     pushToast("success", chosen ? `Saved. Your handle is @${chosen}.` : "Profile updated!");
   };
 
-  /* ------------------------------ Loaders ------------------------------ */
+  /* ------------------------------ Loaders (stories/comments/products) ------------------------------ */
   const loadMyStories = useCallback(
     async (uid: string, lim: number) => {
       setStoriesLoading(true);
@@ -493,73 +525,40 @@ export default function ProfilePage() {
     []
   );
 
-  async function fallbackLoadMyComments(uid: string, lim: number): Promise<MyComment[]> {
-    const recentStoriesSnap = await getDocs(
-      query(collection(db, "stories"), orderBy("createdAt", "desc"), fsLimit(40))
-    );
-
-    const storyIds = recentStoriesSnap.docs.map((d) => d.id);
-    const collected: MyComment[] = [];
-
-    for (const sid of storyIds) {
-      const csnap = await getDocs(
-        query(
-          collection(db, "stories", sid, "comments"),
-          where("authorId", "==", uid),
-          orderBy("createdAt", "desc"),
-          fsLimit(3)
-        )
-      );
-      csnap.forEach((d) => {
-        const data = d.data() as any;
-        collected.push({
-          id: d.id,
-          body: data.body ?? "",
-          storyId: sid,
-          createdAt: data.createdAt,
-        });
-      });
-      if (collected.length >= lim) break;
-    }
-
-    collected.sort((a, b) => {
-      const ta = a.createdAt ? (a.createdAt as Timestamp).toMillis?.() ?? 0 : 0;
-      const tb = b.createdAt ? (b.createdAt as Timestamp).toMillis?.() ?? 0 : 0;
-      return tb - ta;
-    });
-
-    return collected.slice(0, lim);
-  }
-
   const loadMyComments = useCallback(
     async (uid: string, lim: number) => {
       setCommentsLoading(true);
       setCountNote(null);
       try {
+        // ✅ story comments ONLY, properly indexed
         const commentsQ = query(
           collectionGroup(db, "comments"),
           where("authorId", "==", uid),
+          where("parentKind", "==", "story"),
           orderBy("createdAt", "desc"),
           fsLimit(lim)
         );
         const cSnap = await getDocs(commentsQ);
         const cList: MyComment[] = [];
         cSnap.forEach((d) => {
+          const parentDoc = d.ref.parent.parent; // stories/{storyId}
+          if (!parentDoc) return;
           const data = d.data() as any;
-          const storyId = d.ref.parent.parent?.id || "";
           cList.push({
             id: d.id,
             body: data.body ?? "",
-            storyId,
+            storyId: parentDoc.id,
             createdAt: data.createdAt,
           });
         });
         setComments(cList);
       } catch (e) {
-        console.warn("Comments list error:", (e as FirebaseError)?.message);
-        const fallback = await fallbackLoadMyComments(uid, lim);
-        setComments(fallback);
-        setCountNote((n) => n ?? "Using a temporary fallback. Create the collection-group index for best results.");
+        const err = e as FirebaseError;
+        console.warn("Comments list error:", err?.code, err?.message);
+        setComments([]);
+        setCountNote(
+          "Create a collection-group index on comments(authorId ASC, parentKind ASC, createdAt DESC)."
+        );
       } finally {
         setCommentsLoading(false);
       }
@@ -567,7 +566,7 @@ export default function ProfilePage() {
     []
   );
 
-  /* ✅ NEW: load my products (ownerUid == uid) */
+  /* products */
   const loadMyProducts = useCallback(
     async (uid: string, lim: number) => {
       setProductsLoading(true);
@@ -600,7 +599,7 @@ export default function ProfilePage() {
         console.warn("Products list error:", err?.code, err?.message);
         setProducts([]);
         setProductsNote(
-          "Products list may require a Firestore index: collection=products, where ownerUid==, order by createdAt desc."
+          "Products list may require an index: collection=products, where ownerUid==, order by createdAt desc."
         );
       } finally {
         setProductsLoading(false);
@@ -609,7 +608,128 @@ export default function ProfilePage() {
     []
   );
 
-  // Counts on mount
+  /* ------------------------------ REALTIME: my forum threads ------------------------------ */
+  useEffect(() => {
+    if (!user?.uid) return;
+    setThreadsLoading(true);
+    setThreadsNote(null);
+
+    const qy = query(
+      collection(db, "threads"),
+      where("authorId", "==", user.uid),
+      orderBy("createdAt", "desc"),
+      fsLimit(threadsLimit)
+    );
+
+    const unsub = onSnapshot(
+      qy,
+      (snap) => {
+        const list: MyThread[] = [];
+        snap.forEach((d) => {
+          const T = d.data() as any;
+          list.push({
+            id: d.id,
+            title: T.title,
+            category: T.category ?? null,
+            replyCount: T.replyCount ?? 0,
+            createdAt: T.createdAt,
+          });
+        });
+        setThreads(list);
+        setThreadCount(snap.size);
+        setThreadsLoading(false);
+      },
+      (err: FirestoreError) => {
+        console.warn("Threads realtime error:", err.code, err.message);
+        setThreads([]);
+        setThreadsLoading(false);
+        setThreadsNote(
+          "Threads list may require an index: collection=threads, where authorId==, order by createdAt desc."
+        );
+      }
+    );
+
+    return () => unsub();
+  }, [user?.uid, threadsLimit]);
+
+  /* ------------------------------ REALTIME: my forum replies (list) ------------------------------ */
+  useEffect(() => {
+    if (!user?.uid) return;
+    setRepliesLoading(true);
+    setRepliesNote(null);
+
+    // ✅ Filter parentKind == 'thread' so the CG index is used and no post-filtering is needed
+    const qy = query(
+      collectionGroup(db, "comments"),
+      where("authorId", "==", user.uid),
+      where("parentKind", "==", "thread"),
+      orderBy("createdAt", "desc"),
+      fsLimit(repliesLimit)
+    );
+
+    const unsub = onSnapshot(
+      qy,
+      (snap) => {
+        const list: MyThreadReply[] = [];
+        snap.forEach((d) => {
+          const parentDoc = d.ref.parent.parent; // threads/{threadId}
+          if (!parentDoc) return;
+
+          const C = d.data() as any;
+          list.push({
+            id: d.id,
+            body: C.body ?? "",
+            threadId: parentDoc.id,
+            createdAt: C.createdAt,
+          });
+        });
+
+        setReplies(list);
+        setRepliesLoading(false);
+      },
+      (err: FirestoreError) => {
+        console.warn("Replies realtime error (list):", err.code, err.message);
+        setReplies([]);
+        setRepliesLoading(false);
+        setRepliesNote(
+          "If replies look incomplete, ensure comments carry parentKind:'thread' and that the CG index exists."
+        );
+      }
+    );
+
+    return () => unsub();
+  }, [user?.uid, repliesLimit]);
+
+  /* ------------------------------ REALTIME: my forum replies (TOTAL COUNT) ------------------------------ */
+  useEffect(() => {
+    if (!user?.uid) return;
+    setRepliesCountLoading(true);
+
+    // ✅ Same filter; simple, real-time count from snapshot size
+    const qAll = query(
+      collectionGroup(db, "comments"),
+      where("authorId", "==", user.uid),
+      where("parentKind", "==", "thread"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubAll = onSnapshot(
+      qAll,
+      (snap) => {
+        setRepliesCount(snap.size);
+        setRepliesCountLoading(false);
+      },
+      (err: FirestoreError) => {
+        console.warn("Replies realtime error (count):", err.code, err.message);
+        setRepliesCount(null);
+        setRepliesCountLoading(false);
+      }
+    );
+
+    return () => unsubAll();
+  }, [user?.uid]);
+
+  // Counts on mount (stories/story-comments/products)
   useEffect(() => {
     (async () => {
       if (!user?.uid) {
@@ -627,25 +747,26 @@ export default function ProfilePage() {
       }
 
       try {
-        const commentsQ = query(
+        // ✅ story comments ONLY (no orderBy needed for count)
+        const storyCommentsCountQ = query(
           collectionGroup(db, "comments"),
           where("authorId", "==", user.uid),
-          orderBy("createdAt", "desc")
+          where("parentKind", "==", "story")
         );
-        const cCountSnap = await getCountFromServer(commentsQ);
+        const cCountSnap = await getCountFromServer(storyCommentsCountQ);
         setCommentCount(cCountSnap.data().count);
       } catch (e) {
         const err = e as FirebaseError;
         console.warn("Comment count error:", err?.code, err?.message);
         setCommentCount(null);
         setCountNote(
-          "Comment count needs a Firestore collection-group index for `comments` with fields: authorId ASC, createdAt DESC."
+          "Story comment count needs a CG index on comments(authorId ASC, parentKind ASC)."
         );
       } finally {
         setStatsLoading(false);
       }
 
-      // ✅ NEW: product count
+      // products count
       try {
         const productsQ = query(collection(db, "products"), where("ownerUid", "==", user.uid));
         const pCountSnap = await getCountFromServer(productsQ);
@@ -668,7 +789,6 @@ export default function ProfilePage() {
     loadMyComments(user.uid, commentsLimit);
   }, [user?.uid, commentsLimit, loadMyComments]);
 
-  /* ✅ NEW: products list */
   useEffect(() => {
     if (!user?.uid) return;
     loadMyProducts(user.uid, productsLimit);
@@ -680,6 +800,14 @@ export default function ProfilePage() {
     !commentsLoading && commentsLimit === INITIAL_LIMIT && ((commentCount ?? comments.length) > comments.length);
   const showProductsViewAll =
     !productsLoading && productsLimit === INITIAL_LIMIT && ((productCount ?? products.length) > products.length);
+
+  const showThreadsViewAll =
+    !threadsLoading && threadsLimit === INITIAL_LIMIT && ((threadCount ?? threads.length) > threads.length);
+
+  const showRepliesViewAll =
+    !repliesLoading &&
+    repliesLimit === INITIAL_LIMIT &&
+    (repliesCount ?? 0) > replies.length;
 
   /* ------------------------------ Deletions ----------------------------- */
   const deleteStory = useCallback(
@@ -732,7 +860,7 @@ export default function ProfilePage() {
       try {
         await deleteDoc(doc(db, "stories", sid, "comments", cid));
         await loadMyComments(user.uid, commentsLimit);
-        if (commentCount != null) setCommentCount((c) => (c ?? 1) - 1);
+        if (commentCount != null) setCommentCount((c) => Math.max(0, (c ?? 1) - 1));
         pushToast("success", "Comment deleted.");
       } catch (e) {
         console.error("Delete comment error:", e);
@@ -742,7 +870,7 @@ export default function ProfilePage() {
     [user?.uid, commentsLimit, loadMyComments, commentCount]
   );
 
-  /* ✅ NEW: delete product */
+  /* products */
   const deleteProduct = useCallback(
     async (pid: string) => {
       if (!user?.uid) return;
@@ -758,7 +886,7 @@ export default function ProfilePage() {
       try {
         await deleteDoc(doc(db, "products", pid));
         await loadMyProducts(user.uid, productsLimit);
-        if (productCount != null) setProductCount((c) => (c ?? 1) - 1);
+        if (productCount != null) setProductCount((c) => Math.max(0, (c ?? 1) - 1));
         pushToast("success", "Product deleted.");
       } catch (e) {
         console.error("Delete product error:", e);
@@ -768,6 +896,9 @@ export default function ProfilePage() {
     [user?.uid, productsLimit, loadMyProducts, productCount]
   );
 
+  const peso = (n?: number | null) =>
+    typeof n === "number" ? n.toLocaleString("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }) : "—";
+
   if (loading || !user) {
     return (
       <div className="section">
@@ -776,16 +907,13 @@ export default function ProfilePage() {
     );
   }
 
-  const peso = (n?: number | null) =>
-    typeof n === "number" ? n.toLocaleString("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }) : "—";
-
   return (
     <>
       <MetaHead
-  title="My Profile • Pinoy Tambayan Hub"
-  description="Manage your display name, avatar, and see your stories, comments, and products."
-  noindex
-/>
+        title="My Profile • Pinoy Tambayan Hub"
+        description="Manage your display name, avatar, and see your stories, forum posts & replies, comments, and products."
+        noindex
+      />
 
       <section className="section">
         <div className="container-page max-w-5xl">
@@ -798,8 +926,10 @@ export default function ProfilePage() {
             <div className="flex items-center gap-4">
               <div className="avatar h-14 w-14 rounded-full overflow-hidden bg-gray-700 shrink-0">
                 {photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={photo} alt="avatar" className="h-full w-full object-cover" />
                 ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={`data:image/svg+xml;utf8,\
                 <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\
@@ -876,18 +1006,22 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="card h-24">
-              <div className="text-gray-400 text-xs">Comments</div>
+              <div className="text-gray-400 text-xs">Comments (stories)</div>
               <div className="mt-1 text-2xl text-white font-semibold">
                 {statsLoading ? <Skeleton className="h-6 w-14" /> : commentCount ?? "—"}
               </div>
             </div>
             <div className="card h-24">
-              <div className="text-gray-400 text-xs">Reads (session)</div>
-              <div className="mt-1 text-2xl text-white font-semibold">—</div>
+              <div className="text-gray-400 text-xs">Forum Threads</div>
+              <div className="mt-1 text-2xl text-white font-semibold">
+                {threadsLoading ? <Skeleton className="h-6 w-14" /> : threadCount ?? threads.length ?? "—"}
+              </div>
             </div>
             <div className="card h-24">
-              <div className="text-gray-400 text-xs">Reactions</div>
-              <div className="mt-1 text-2xl text-white font-semibold">—</div>
+              <div className="text-gray-400 text-xs">Forum Replies</div>
+              <div className="mt-1 text-2xl text-white font-semibold">
+                {repliesCountLoading ? <Skeleton className="h-6 w-14" /> : repliesCount ?? "—"}
+              </div>
             </div>
           </div>
           {countNote && <div className="mb-6 text-xs text-amber-300">{countNote}</div>}
@@ -940,7 +1074,7 @@ export default function ProfilePage() {
                     ))}
                   </ul>
 
-                  {showStoriesViewAll && (
+                  {!storiesLoading && storiesLimit === INITIAL_LIMIT && ((storyCount ?? stories.length) > stories.length) && (
                     <div className="mt-3">
                       <button
                         onClick={() => setStoriesLimit(ALL_LIMIT)}
@@ -954,9 +1088,9 @@ export default function ProfilePage() {
               )}
             </section>
 
-            {/* My Recent Comments */}
+            {/* My Recent Story Comments */}
             <section>
-              <h2 className="text-lg font-semibold mb-3">My Recent Comments</h2>
+              <h2 className="text-lg font-semibold mb-3">My Recent Story Comments</h2>
 
               {commentsLoading ? (
                 <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
@@ -995,7 +1129,7 @@ export default function ProfilePage() {
                     ))}
                   </ul>
 
-                  {showCommentsViewAll && (
+                  {!commentsLoading && commentsLimit === INITIAL_LIMIT && ((commentCount ?? comments.length) > comments.length) && (
                     <div className="mt-3">
                       <button
                         onClick={() => setCommentsLimit(ALL_LIMIT)}
@@ -1010,7 +1144,128 @@ export default function ProfilePage() {
             </section>
           </div>
 
-          {/* ✅ My Products */}
+          {/* My Forum Threads & Replies */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+            {/* My Forum Threads */}
+            <section>
+              <h2 className="text-lg font-semibold mb-3">My Forum Threads</h2>
+
+              {threadsLoading ? (
+                <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                </ul>
+              ) : threads.length === 0 ? (
+                <p className="text-gray-400">
+                  You haven’t posted any forum threads yet.{" "}
+                  <Link href="/forums/new" className="text-blue-400 underline">
+                    Start here
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <>
+                  <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
+                    {threads.map((t) => (
+                      <li key={t.id} className="card p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="font-medium">
+                              <Link href={`/forums/${t.id}`} className="hover:underline">
+                                {t.title}
+                              </Link>
+                            </h3>
+                            <div className="text-xs text-gray-400 mt-1">
+                              #{t.category || "general"} · {(t.replyCount ?? 0)}{" "}
+                              {(t.replyCount ?? 0) === 1 ? "reply" : "replies"}
+                            </div>
+                          </div>
+                          <Link
+                            href={`/forums/${t.id}`}
+                            className="shrink-0 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/10"
+                          >
+                            View
+                          </Link>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {!threadsLoading && threadsLimit === INITIAL_LIMIT && ((threadCount ?? threads.length) > threads.length) && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() => setThreadsLimit(ALL_LIMIT)}
+                        className="text-sm text-blue-400 hover:underline"
+                      >
+                        View all my threads ({threadCount})
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {threadsNote && <div className="mt-2 text-xs text-amber-300">{threadsNote}</div>}
+            </section>
+
+            {/* My Forum Replies */}
+            <section>
+              <h2 className="text-lg font-semibold mb-3">My Forum Replies</h2>
+
+              {repliesLoading ? (
+                <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                </ul>
+              ) : replies.length === 0 ? (
+                <p className="text-gray-400">No forum replies yet.</p>
+              ) : (
+                <>
+                  <ul className="space-y-3 min-h-[180px] sm:min-h-[220px]">
+                    {replies.map((r) => (
+                      <li key={r.id} className="card p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-gray-100 whitespace-pre-wrap break-words">
+                              {r.body.length > 160 ? r.body.slice(0, 160) + "…" : r.body}
+                            </p>
+                            <div className="text-xs text-gray-400 mt-1">
+                              on{" "}
+                              <Link href={`/forums/${r.threadId}`} className="text-blue-400 hover:underline">
+                                this thread
+                              </Link>
+                            </div>
+                          </div>
+                          <Link
+                            href={`/forums/${r.threadId}`}
+                            className="shrink-0 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/10"
+                          >
+                            View
+                          </Link>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {showRepliesViewAll && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() => setRepliesLimit(ALL_LIMIT)}
+                        className="text-sm text-blue-400 hover:underline"
+                      >
+                        View more replies{typeof repliesCount === "number" ? ` (${repliesCount})` : ""}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {repliesNote && <div className="mt-2 text-xs text-amber-300">{repliesNote}</div>}
+            </section>
+          </div>
+
+          {/* Products */}
           <section className="mt-6">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h2 className="text-lg font-semibold">My Products</h2>
@@ -1061,14 +1316,14 @@ export default function ProfilePage() {
                           <div className="text-xs text-gray-400 mt-0.5">
                             {p.category || "Others"} {p.store ? `· via ${p.store}` : ""}
                           </div>
-                          <div className="text-sm mt-1">{peso(p.pricePhp ?? undefined)}</div>
+                          <div className="text-sm mt-1">{peso(p.pricePhp ?? null)}</div>
                         </div>
                       </a>
                     </li>
                   ))}
                 </ul>
 
-                {showProductsViewAll && (
+                {!productsLoading && productsLimit === INITIAL_LIMIT && ((productCount ?? products.length) > products.length) && (
                   <div className="mt-3">
                     <button
                       onClick={() => setProductsLimit(ALL_LIMIT)}
