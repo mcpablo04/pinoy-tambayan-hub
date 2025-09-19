@@ -17,6 +17,7 @@ const LINKS = [
   { label: "Marketplace", href: "/marketplace", icon: "🛍️" },
   { label: "Stories", href: "/stories", icon: "✍️" },
   { label: "Tools", href: "/tools", icon: "🛠️" },
+  { label: "Support", href: "/support", icon: "💙" },
 ];
 
 // Show these as the main 5 items on mobile; the rest go under “More”.

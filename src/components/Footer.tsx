@@ -19,6 +19,7 @@ export default function Footer() {
           <Link href="/terms" className="hover:text-blue-400">Terms</Link>
           <Link href="/contact" className="hover:text-blue-400">Contact</Link>
           <Link href="/privacy" className="hover:text-blue-400">Privacy</Link>
+          <Link href="/support" className="hover:text-blue-400">Support</Link>
         </nav>
 
         {/* Right: social */}
