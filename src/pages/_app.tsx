@@ -28,19 +28,18 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           <link rel="canonical" href="https://pinoytambayanhub.com/" />
         </Head>
 
-        {/* Google AdSense (replace client ID) */}
+        {/* ✅ Google AdSense Script */}
         <Script
           id="adsense"
           async
           strategy="afterInteractive"
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8634966596493595"
           crossOrigin="anonymous"
         />
 
         <div className="app-shell isolate">
           <NavBar />
 
-          {/* Desktop gets padding to clear fixed header; mobile handled by NavBar spacer */}
           <main
             className="flex-grow md:pt-24 px-4 md:px-6 max-w-6xl mx-auto w-full overflow-anchor-none"
             key={router.asPath}
@@ -52,7 +51,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           <GlobalPlayer />
         </div>
 
-        {/* Global toaster – aligned top-right, under the fixed navbar */}
         <Toaster
           position="top-right"
           reverseOrder={false}

@@ -1,4 +1,3 @@
-// src/pages/weather.tsx
 "use client";
 
 import Head from "next/head";
@@ -161,7 +160,6 @@ export default function WeatherPage() {
     setGeoErr(null);
     setGeoLoading(true);
 
-    // Quick HTTPS/permission hint
     if (!window.isSecureContext) {
       setGeoErr("Location requires HTTPS. Using approximate IP location.");
     }
@@ -191,13 +189,11 @@ export default function WeatherPage() {
             };
           setCity(named);
         } catch {
-          // swallow
         } finally {
           finish();
         }
       },
       async (err) => {
-        // Permission denied, timeout, or other errors
         setGeoErr(
           err.code === err.PERMISSION_DENIED
             ? "Precise location blocked. Using approximate location."
@@ -229,7 +225,6 @@ export default function WeatherPage() {
 
   return (
     <>
-      {/* SEO */}
       <Head>
         <title>Philippines 7-Day Weather Forecast | Pinoy Tambayan Hub</title>
         <meta
@@ -258,13 +253,12 @@ export default function WeatherPage() {
 
       <section className="section">
         <div className="container-page">
-          {/* Header */}
           <h1 className="page-title">Weather</h1>
           <p className="text-gray-400 mb-5">
             7-day forecast for the Philippines. Timezone: Asia/Manila.
           </p>
 
-          {/* PAGASA Alerts — fixed height to avoid layout shift */}
+          {/* PAGASA Alerts */}
           <div className="mb-5 rounded-lg border border-white/10 bg-gray-800/70 p-4 min-h-[96px]">
             <div className="flex items-start gap-3">
               <div className="text-2xl" aria-hidden>🌀</div>
@@ -342,7 +336,7 @@ export default function WeatherPage() {
             </div>
           </div>
 
-          {/* Search / actions */}
+          {/* Search */}
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
             <div className="flex-1 min-w-0">
               <label htmlFor="q" className="sr-only">Search city</label>
@@ -402,7 +396,7 @@ export default function WeatherPage() {
             </div>
           </div>
 
-          {/* Location line */}
+          {/* Location */}
           <div className="mt-6 mb-3 flex items-center gap-3 min-w-0">
             <h2 className="text-lg font-semibold truncate">
               {city.name}{" "}
@@ -421,12 +415,15 @@ export default function WeatherPage() {
           </div>
           {geoErr && <p className="text-amber-400 text-sm mb-3">{geoErr}</p>}
 
-          {/* Forecast area */}
+          {/* Forecast */}
           <div className="relative">
             {initialLoading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 min-w-0">
                 {Array.from({ length: 7 }).map((_, i) => (
-                  <div key={i} className="min-h[160px] rounded-lg bg-gray-800/50 animate-pulse min-w-0" />
+                  <div
+                    key={i}
+                    className="min-h[160px] rounded-lg bg-gray-800/50 animate-pulse min-w-0"
+                  />
                 ))}
               </div>
             ) : days.length ? (
@@ -463,6 +460,30 @@ export default function WeatherPage() {
             ) : (
               <p className="text-gray-400">No forecast available.</p>
             )}
+          </div>
+
+          {/* Zoom Earth preview link */}
+          <div className="mt-10">
+            <h2 className="text-lg font-semibold mb-3">🌍 Live Satellite View (Zoom Earth)</h2>
+            <p className="text-gray-400 mb-4 text-sm">
+              View real-time satellite imagery of clouds, storms, and weather patterns for the whole Philippines. 
+              Click below to open Zoom Earth in a new tab.
+            </p>
+            <a
+              href="https://zoom.earth/maps/satellite/#view=11.5,122.5,5z"
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition"
+            >
+              <img
+                src="https://zoom.earth/assets/images/zoom-earth-social.jpg"
+                alt="Zoom Earth Philippines Satellite"
+                className="w-full h-auto object-cover"
+              />
+              <div className="bg-gray-900 text-center p-3 text-blue-400 font-semibold">
+                🌍 Open Live Map on Zoom Earth ↗
+              </div>
+            </a>
           </div>
 
           <div className="page-bottom-spacer" />
