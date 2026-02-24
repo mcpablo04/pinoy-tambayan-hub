@@ -2,11 +2,12 @@
 
 import Head from "next/head";
 import Link from "next/link";
-import { useMemo } from "react";
-import { usePlayer, Station } from "../../context/PlayerContext"; // Added Station type
+import { useMemo, useState } from "react";
+import { usePlayer, Station } from "../../context/PlayerContext";
 import { STATIONS } from "../../data/stations";
 import Layout from "../../components/Layout";
 import MetaHead from "../../components/MetaHead";
+import { Share2, Check } from "lucide-react"; // Ensure lucide-react is installed
 
 /* ===================== Types ===================== */
 type StationEx = {
@@ -22,8 +23,8 @@ type StationEx = {
 };
 
 export default function StationDetail({ station }: { station: StationEx }) {
-  // FIXED: Changed playStation to setStation
   const { setStation, currentStation, isPlaying, setIsPlaying, setShowUI } = usePlayer();
+  const [copied, setCopied] = useState(false);
 
   const isCurrent = currentStation?.id === station.id;
 
@@ -36,6 +37,35 @@ export default function StationDetail({ station }: { station: StationEx }) {
     return (genreMatches.length ? genreMatches : pool).slice(0, 6);
   }, [station]);
 
+  const handleShare = async () => {
+    const shareData = {
+      title: `${station.name} - Pinoy Tambayan Hub`,
+      text: `Listen to ${station.name} live on Pinoy Tambayan Hub!`,
+      url: window.location.href,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch (err) {
+      console.error("Error sharing:", err);
+    }
+  };
+
+  const handlePlayAction = () => {
+    if (isCurrent) {
+      setIsPlaying(!isPlaying);
+    } else {
+      setStation(station as Station, true);
+    }
+    setShowUI(true);
+  };
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "RadioStation",
@@ -44,16 +74,6 @@ export default function StationDetail({ station }: { station: StationEx }) {
     genre: station.genre,
     url: station.website || "https://pinoytambayanhub.com",
     logo: station.logo,
-  };
-
-  const handlePlayAction = () => {
-    if (isCurrent) {
-      setIsPlaying(!isPlaying);
-    } else {
-      // FIXED: Use setStation and cast station as Station type
-      setStation(station as Station, true);
-    }
-    setShowUI(true);
   };
 
   return (
@@ -115,6 +135,15 @@ export default function StationDetail({ station }: { station: StationEx }) {
                       ) : "▶"}
                       {isCurrent && isPlaying ? "Pause Stream" : "Listen Now"}
                     </button>
+
+                    <button 
+                      onClick={handleShare}
+                      className="bg-blue-600/20 border border-blue-500/30 text-blue-400 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-600/30 transition-all flex items-center gap-2"
+                    >
+                      {copied ? <Check size={16} /> : <Share2 size={16} />}
+                      {copied ? "Link Copied!" : "Share Station"}
+                    </button>
+
                     {station.website && (
                       <a href={station.website} target="_blank" rel="noopener noreferrer" className="bg-white/5 border border-white/10 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/10 transition-all">
                         Official Site
