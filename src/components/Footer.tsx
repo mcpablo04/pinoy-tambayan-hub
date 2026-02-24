@@ -1,60 +1,92 @@
 // src/components/Footer.tsx
 "use client";
+
 import Link from "next/link";
+import { Facebook, Twitter, ShieldCheck, HelpCircle, Mail, Info } from "lucide-react";
 
 export default function Footer() {
   const year = new Date().getFullYear();
 
+  const links = [
+    { name: "About", href: "/about", icon: Info },
+    { name: "Terms", href: "/terms", icon: ShieldCheck },
+    { name: "Contact", href: "/contact", icon: Mail },
+    { name: "Privacy", href: "/privacy", icon: ShieldCheck },
+    { name: "Support", href: "/support", icon: HelpCircle },
+  ];
+
   return (
-    <footer className="bg-gray-900 text-gray-400 text-sm py-6 mt-8 border-t border-gray-700">
-      <div className="max-w-6xl mx-auto px-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        {/* Left: copyright */}
-        <div className="text-center md:text-left">
-          © {year} <span className="text-gray-200">Pinoy Tambayan Hub</span> — All Rights Reserved
+    <footer className="relative mt-20 overflow-hidden border-t border-white/5 bg-[#020617]">
+      {/* Decorative Background Glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent" />
+      
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+          
+          {/* Brand Section */}
+          <div className="flex flex-col items-center md:items-start gap-2">
+            <div className="flex items-center gap-2">
+               <span className="text-xl font-black italic uppercase tracking-tighter text-white">
+                Pinoy<span className="text-blue-500">Tambayan</span>
+              </span>
+              <div className="px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-[8px] font-black uppercase tracking-widest text-blue-500">
+                Hub
+              </div>
+            </div>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+              © {year} All Rights Reserved
+            </p>
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
+            {links.map((link) => (
+              <Link
+                key={link.name}
+                href={link.href}
+                className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 hover:text-white transition-colors"
+              >
+                <link.icon size={12} className="text-slate-600 group-hover:text-blue-500 transition-colors" />
+                {link.name}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Social Presence */}
+          <div className="flex items-center gap-4">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 italic mr-2">Connect</span>
+            
+            <a
+              href="https://facebook.com/..."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:bg-blue-600 hover:text-white hover:-translate-y-1 transition-all duration-300"
+            >
+              <Facebook size={18} fill="currentColor" />
+            </a>
+
+            <a
+              href="https://x.com/..."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:bg-blue-400 hover:text-white hover:-translate-y-1 transition-all duration-300"
+            >
+              <Twitter size={18} fill="currentColor" />
+            </a>
+          </div>
         </div>
 
-        {/* Middle: nav links */}
-        <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-          <Link href="/about" className="hover:text-blue-400">About Us</Link>
-          <Link href="/terms" className="hover:text-blue-400">Terms</Link>
-          <Link href="/contact" className="hover:text-blue-400">Contact</Link>
-          <Link href="/privacy" className="hover:text-blue-400">Privacy</Link>
-          <Link href="/support" className="hover:text-blue-400">Support</Link>
-        </nav>
-
-        {/* Right: social */}
-        <div className="flex items-center justify-center gap-3">
-          <span className="text-gray-500 hidden sm:inline">Follow us:</span>
-
-          {/* Facebook */}
-          <a
-            href="https://www.facebook.com/profile.php?id=61579365553033"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Follow Pinoy Tambayan Hub on Facebook"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 hover:bg-white/10 hover:text-white transition"
-            title="Facebook"
-          >
-            {/* FB icon */}
-            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current">
-              <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.9h2.54V9.41c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.23.2 2.23.2v2.45h-1.25c-1.23 0-1.61.77-1.61 1.56v1.87h2.74l-.44 2.9h-2.3V22c4.78-.76 8.42-4.92 8.42-9.94Z" />
-            </svg>
-          </a>
-
-          {/* X / Twitter */}
-          <a
-            href="https://x.com/pnoytambayanhub"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Follow Pinoy Tambayan Hub on X"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 hover:bg-white/10 hover:text-white transition"
-            title="X (Twitter)"
-          >
-            {/* X icon */}
-            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current">
-              <path d="M18.244 2H21l-6.53 7.454L22 22h-6.873l-4.7-6.16L4.8 22H2l7.06-8.06L2 2h6.985l4.255 5.64L18.244 2Zm-2.4 18h2.041L8.24 4H6.1l9.744 16Z" />
-            </svg>
-          </a>
+        {/* Bottom Disclaimer/Meta */}
+        <div className="mt-12 pt-8 border-t border-white/5 flex flex-col items-center gap-4">
+          <p className="text-[9px] text-center text-slate-600 max-w-2xl leading-relaxed uppercase font-bold tracking-widest">
+            Pinoy Tambayan Hub is a community-driven platform. We do not host videos on our servers. 
+            All content is provided by non-affiliated third parties.
+          </p>
+          <div className="flex items-center gap-4 text-[8px] font-black text-slate-700 tracking-[0.3em] uppercase">
+            <span>Server: PH-MNL-01</span>
+            <span className="w-1 h-1 rounded-full bg-slate-800" />
+            <span>Status: Operational</span>
+          </div>
         </div>
       </div>
     </footer>

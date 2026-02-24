@@ -1,184 +1,110 @@
 @import "tailwindcss";
 
-/* === Theme tokens === */
-@theme inline {
-  --color-darkbg: #0f1115;
-  --color-lighttext: #eaeaea;
-  --color-card: #1f2430;
-  --color-primary: #3b82f6;
-
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+/* 1. MANUALLY DEFINE THE THEME TO PREVENT COMPILER ERRORS */
+:root {
+  --darkbg: #020617;
+  --card: #0f172a;
+  --lighttext: #f8fafc;
+  --primary: #3b82f6;
+  
+  /* System colors */
+  --background: #020617;
+  --foreground: #f8fafc;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-/* Force instant jump to top, not smooth */
-html { scroll-behavior: auto !important; }
-
-/* ===== Base ===== */
-/* IMPORTANT: the page (body) must own the scroll for sticky to work reliably */
+/* 2. CORE RESET - FIXES THE "DESTROYED" LAYOUT */
 html, body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Inter", Arial, Helvetica, sans-serif;
-
-  /* remove height:100%; it breaks sticky by changing the scroll container */
-  /* height: 100%;  <-- removed on purpose */
-
-  min-height: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-
-  /* iOS safe areas */
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+  background-color: var(--darkbg) !important;
+  color: var(--lighttext) !important;
+  margin: 0;
+  padding: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
 }
 
-/* Smooth compositing for fixed/sticky headers */
-.gpu-smooth { transform: translateZ(0); backface-visibility: hidden; will-change: transform; }
-@media (prefers-reduced-motion: reduce) { .gpu-smooth, .gpu-smooth * { transition: none !important; } }
+/* 3. WRAP EVERYTHING IN @LAYER TO PREVENT STYLE COLLISION */
+@layer components {
+  
+  /* Layout */
+  .container-page {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
 
+  /* The Bento Card Look */
+  .card {
+    background-color: rgba(15, 23, 42, 0.5); /* var(--card) with opacity */
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 1.5rem;
+    padding: 1.5rem;
+  }
 
-/* Next.js root should not constrain vertical overflow */
-#___next, #__next { min-height: 100%; overflow: visible; }
+  /* Typography */
+  .page-title {
+    font-size: 2.5rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    font-style: italic;
+    letter-spacing: -0.05em;
+    color: white;
+  }
 
-/* Predictable sizing */
-*, *::before, *::after { box-sizing: border-box; }
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 1.5rem;
+    border-radius: 1rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    transition: all 0.2s;
+    cursor: pointer;
+    border: none;
+  }
 
-/* Media never overflows */
-img, svg, video { max-width: 100%; height: auto; }
+  .btn-primary {
+    background-color: var(--primary);
+    color: white;
+  }
 
-/* Scrollbar helper */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .btn-ghost {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #94a3b8;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
 
-/* ===== Layout helpers ===== */
-.container-page {
-  width: 100%;
-  max-width: 72rem; /* 6xl */
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: 1rem;
-  padding-right: 1rem;
-}
-@media (min-width: 768px) {
-  .container-page { padding-left: 1.5rem; padding-right: 1.5rem; }
-}
-
-.section {
-  padding-top: 2rem;
-  padding-bottom: 2rem;
-}
-@media (min-width: 640px) {
-  .section { padding-top: 2.5rem; padding-bottom: 2.5rem; }
-}
-
-.page-title {
-  font-weight: 800;
-  line-height: 1.2;
-  margin-bottom: 1rem;
-  font-size: 1.5rem;
-}
-@media (min-width: 640px) {
-  .page-title { font-size: 1.875rem; }
-}
-
-/* ===== UI Elements ===== */
-.card { @apply bg-card/80 rounded-lg p-4 border border-white/5; }
-.card-hover { @apply hover:bg-card transition; }
-
-.btn {
-  @apply inline-flex items-center justify-center rounded-lg px-4 py-2 font-semibold focus:outline-none focus:ring-2 transition;
-}
-.btn-primary {
-  @apply bg-blue-600 text-white hover:bg-blue-500 focus:ring-blue-400;
-}
-.btn-ghost {
-  @apply bg-gray-800 text-gray-100 border border-white/10 hover:bg-gray-700 focus:ring-blue-400;
-}
-
-.input {
-  @apply w-full rounded-md bg-gray-800/80 text-gray-100 placeholder-gray-400 p-3 focus:outline-none focus:ring-2 focus:ring-blue-500;
-}
-
-/* ===== Avatars ===== */
-.avatar {
-  border-radius: 9999px;
-  overflow: hidden;
-  background: #1f2937;
-  display: inline-block;
-}
-.avatar > img {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover;
-  object-position: center;
-  display: block;
-}
-.avatar-sm { width: 32px; height: 32px; }
-.avatar-md { width: 36px; height: 36px; }
-.avatar-lg { width: 96px; height: 96px; }
-
-/* ===== Page chrome ===== */
-.app-shell {
-  @apply bg-darkbg text-lighttext min-h-screen flex flex-col overflow-x-hidden;
-  /* Critical: do NOT capture vertical scroll on the app shell */
-  overflow-y: visible !important;
-}
-
-/* Handy spacer */
-.page-bottom-spacer { height: 2rem; }
-
-.stack-gap > * + * { margin-top: .75rem; }
-@media (min-width: 640px) { .stack-gap > * + * { margin-top: 1rem; } }
-
-/* ===== Sticky helpers ===== */
-/* If some ancestor sets transform/filter (can break sticky), this helps in practice */
-.sticky { will-change: auto; }
-
-/* Safe-area helpers (iOS notch) */
-:root { --safe-top: env(safe-area-inset-top); }
-
-/* Smooth compositing for fixed/sticky headers */
-.gpu-smooth {
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: transform;
-}
-
-/* Respect reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .gpu-smooth,
-  .gpu-smooth * {
-    transition: none !important;
+  /* Form Elements */
+  .input {
+    width: 100%;
+    background-color: #020617;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 1rem;
+    border-radius: 1rem;
+    outline: none;
+  }
+  
+  .input:focus {
+    border-color: var(--primary);
   }
 }
 
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-/* Prevent scroll anchoring in custom scrollers */
-.overflow-anchor-none { overflow-anchor: none; }
-
-/* === horizontal scroller helpers for mobile navbar === */
-.nav-scroll-x {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain; /* keep horizontal swipe inside the strip */
+/* 4. UTILITIES */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 99px;
+    background-color: #22c55e;
+    box-shadow: 0 0 10px #22c55e;
+  }
 }
-
-/* If your Tailwind build exposes touch-action utilities, you already have `touch-pan-x`.
-   If not, this fallback ensures the gesture is allowed. */
-@supports not (touch-action: pan-x) {
-  .touch-pan-x { touch-action: auto; }
-}
-
-
-/* drag-to-scroll helper */
-.nav-drag-scroll { cursor: grab; }
-.nav-drag-scroll.dragging { cursor: grabbing; }

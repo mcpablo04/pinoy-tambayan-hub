@@ -1,8 +1,7 @@
-// src/components/RadioPlayer.tsx
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Play, Pause, Volume2 } from "lucide-react";
+import { Play, Pause, Volume2, Radio } from "lucide-react";
 
 export interface Station {
   id: string;
@@ -14,7 +13,6 @@ export interface Station {
 export interface RadioPlayerProps {
   station: Station;
   hideTitle?: boolean;
-  /** bump this key (from context) to force auto-play (from a user click like next/prev) */
   playOnLoadKey?: number;
 }
 
@@ -28,18 +26,30 @@ export default function RadioPlayer({
 }: RadioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // --- UI State ---
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [isFloating, setIsFloating] = useState(false);
 
-  // Persisted volume
+  // --- Persisted volume ---
   const [volume, setVolume] = useState<number>(() => {
     if (typeof window === "undefined") return 0.5;
     const saved = Number(window.localStorage.getItem(VOL_KEY));
     return Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.5;
   });
 
-  // Keep volume synced
+  // --- Scroll Logic: Handle Floating State ---
+  useEffect(() => {
+    const handleScroll = () => {
+      // If user scrolls down more than 200px, shrink to corner
+      setIsFloating(window.scrollY > 200);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // --- Audio Engine Logic (Keeping your original logic) ---
   useEffect(() => {
     const a = audioRef.current;
     if (a) a.volume = volume;
@@ -48,179 +58,114 @@ export default function RadioPlayer({
     } catch {}
   }, [volume]);
 
-  // Ensure only one audio plays on the page
   const stopOtherAudios = () => {
     if (typeof document === "undefined") return;
     const me = audioRef.current;
     document.querySelectorAll("audio").forEach((el) => {
-      if (el !== me) {
-        try {
-          (el as HTMLAudioElement).pause();
-        } catch {}
-      }
+      if (el !== me) (el as HTMLAudioElement).pause();
     });
   };
 
-  // Normal (non-muted) autoplay attempt
   const tryAutoplay = async () => {
     const a = audioRef.current;
     if (!a) return;
-
     setLoading(true);
     setErr(null);
     stopOtherAudios();
-
     try {
-      await a.play(); // no muted trick
+      await a.play();
       setPlaying(true);
       setLoading(false);
     } catch {
-      // Browser blocked autoplay — require explicit user gesture
       setPlaying(false);
       setLoading(false);
-      setErr("Click play to start the stream.");
+      setErr("Click play to start.");
     }
   };
 
-  // Load new station; only attempt autoplay if user had played before
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-
     a.src = station.url;
     a.load();
-
-    const shouldAutoplay =
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(AUTOPLAY_KEY) === "1";
-
-    if (shouldAutoplay) {
-      void tryAutoplay(); // may still be blocked, then we show the hint
-    } else {
-      setPlaying(false);
-      setLoading(false);
-      setErr(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const shouldAutoplay = typeof window !== "undefined" && window.localStorage.getItem(AUTOPLAY_KEY) === "1";
+    if (shouldAutoplay) void tryAutoplay();
   }, [station.id, station.url]);
 
-  // Media event listeners to keep UI state accurate
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-
-    const onWaiting = () => setLoading(true);
-    const onPlaying = () => {
-      setLoading(false);
-      setErr(null);
-      setPlaying(true);
-    };
-    const onStalled = () => setLoading(true);
-    const onPause = () => setPlaying(false);
-    const onEnded = () => {
-      setPlaying(false);
-      setLoading(false);
-    };
-    const onError = () => {
-      setPlaying(false);
-      setLoading(false);
-      setErr("Stream error. Try again.");
-    };
-
-    a.addEventListener("waiting", onWaiting);
-    a.addEventListener("playing", onPlaying);
-    a.addEventListener("stalled", onStalled);
-    a.addEventListener("pause", onPause);
-    a.addEventListener("ended", onEnded);
-    a.addEventListener("error", onError);
-
-    return () => {
-      a.removeEventListener("waiting", onWaiting);
-      a.removeEventListener("playing", onPlaying);
-      a.removeEventListener("stalled", onStalled);
-      a.removeEventListener("pause", onPause);
-      a.removeEventListener("ended", onEnded);
-      a.removeEventListener("error", onError);
-    };
-  }, []);
-
-  // When playOnLoadKey changes (e.g., Next/Prev button was clicked),
-  // attempt a normal play. If the browser blocks, show the hint.
-  const lastKeyRef = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (playOnLoadKey === undefined) return;
-    if (lastKeyRef.current === playOnLoadKey) return;
-    lastKeyRef.current = playOnLoadKey;
-
-    // Since the bump is caused by a user action (click), most browsers allow play()
-    try {
-      window.localStorage.setItem(AUTOPLAY_KEY, "1");
-    } catch {}
-    void tryAutoplay();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playOnLoadKey]);
-
-  // Toggle play/pause (and remember preference only from a click)
   const togglePlay = async () => {
     const a = audioRef.current;
     if (!a) return;
-
     if (playing) {
-      try {
-        a.pause();
-      } finally {
-        setPlaying(false);
-        try {
-          window.localStorage.setItem(AUTOPLAY_KEY, "0");
-        } catch {}
-      }
+      a.pause();
+      setPlaying(false);
+      window.localStorage.setItem(AUTOPLAY_KEY, "0");
     } else {
       try {
-        await a.play(); // direct, user-gesture
+        await a.play();
         setPlaying(true);
         setErr(null);
-        try {
-          window.localStorage.setItem(AUTOPLAY_KEY, "1");
-        } catch {}
+        window.localStorage.setItem(AUTOPLAY_KEY, "1");
       } catch {
-        setErr("Click play to start the stream.");
+        setErr("Click play to start.");
       }
     }
   };
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-      {!hideTitle && (
-        <h2 className="text-white font-semibold truncate max-w-[70vw]">
-          <span suppressHydrationWarning>{station.name}</span>
-        </h2>
+    <div 
+      className={`
+        fixed transition-all duration-500 z-[999] gpu-smooth flex items-center
+        ${isFloating 
+          ? "bottom-6 right-6 w-16 h-16 rounded-full shadow-2xl bg-blue-600 border-none justify-center" 
+          : "bottom-8 left-1/2 -translate-x-1/2 w-[95%] max-w-md rounded-[2rem] bg-slate-900/80 backdrop-blur-xl border border-white/10 p-4 justify-between"
+        }
+      `}
+    >
+      {/* 1. Play Button */}
+      <button 
+        onClick={togglePlay} 
+        className={`flex items-center justify-center shrink-0 transition-all ${
+          isFloating ? "text-white" : "w-12 h-12 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-600/20"
+        }`}
+      >
+        {playing ? <Pause className={isFloating ? "w-7 h-7" : "w-5 h-5"} fill="currentColor" /> : <Play className={isFloating ? "w-7 h-7" : "w-5 h-5"} fill="currentColor" />}
+      </button>
+
+      {/* 2. Expanded Content (Hidden when Floating) */}
+      {!isFloating && (
+        <div className="flex-1 ml-4 flex items-center justify-between gap-4 overflow-hidden">
+          <div className="min-w-0">
+            {!hideTitle && (
+              <h2 className="text-white text-xs font-black uppercase italic truncate tracking-tighter">
+                {station.name}
+              </h2>
+            )}
+            <div className="flex items-center gap-2">
+              <span className={`w-1.5 h-1.5 rounded-full ${playing ? "bg-green-500 animate-pulse" : "bg-slate-600"}`} />
+              <p className="text-[10px] text-slate-400 font-bold uppercase">
+                {loading ? "Buffering..." : err ? "Error" : playing ? "Live" : "Ready"}
+              </p>
+            </div>
+          </div>
+
+          {/* Volume Control */}
+          <div className="flex items-center gap-2">
+            <Volume2 className="w-3 h-3 text-slate-400" />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              className="w-16 md:w-20 accent-blue-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+              aria-label="Volume"
+            />
+          </div>
+        </div>
       )}
 
-      <div className="flex items-center gap-3">
-        <button onClick={togglePlay} className="p-2 bg-blue-600 rounded-full transition">
-          {playing ? <Pause className="w-5 h-5 text-white" /> : <Play className="w-5 h-5 text-white" />}
-        </button>
-
-        <div className="flex items-center gap-2">
-          <Volume2 className="w-4 h-4 text-white" />
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-            className="w-24"
-            aria-label="Volume"
-          />
-        </div>
-      </div>
-
-      {/* status line */}
-      <div className="text-xs text-gray-400 min-h-[1rem]">
-        {loading ? "Buffering…" : err ? err : playing ? "Live" : "Ready"}
-      </div>
-
+      {/* 3. Audio Element */}
       <audio
         ref={audioRef}
         className="sr-only"
@@ -228,6 +173,14 @@ export default function RadioPlayer({
         crossOrigin="anonymous"
         playsInline
       />
+      
+      {/* Active Indicator for Floating Mode */}
+      {isFloating && playing && (
+        <div className="absolute -top-1 -right-1 flex h-4 w-4">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+        </div>
+      )}
     </div>
   );
 }

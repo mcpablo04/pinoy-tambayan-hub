@@ -1,10 +1,9 @@
-// src/components/MetaHead.tsx
 import Head from "next/head";
 import { useRouter } from "next/router";
 
 type MetaHeadProps = {
   title: string;
-  description: string;
+  description?: string; // Made optional
   image?: string;
   canonical?: string;
   noindex?: boolean;
@@ -16,6 +15,7 @@ const BASE_URL =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
   "https://pinoytambayanhub.com";
 const DEFAULT_IMAGE = "/brand/og-cover.png";
+const DEFAULT_DESC = "Your digital tambayan for OPM, stories, and community.";
 
 function absoluteUrl(u?: string) {
   if (!u) return undefined;
@@ -23,7 +23,6 @@ function absoluteUrl(u?: string) {
   return `${BASE_URL}${u.startsWith("/") ? "" : "/"}${u}`;
 }
 
-// remove trailing slash from non-root paths
 function normalizeCanonical(u: string) {
   try {
     const url = new URL(u);
@@ -36,15 +35,14 @@ function normalizeCanonical(u: string) {
 
 export default function MetaHead({
   title,
-  description,
+  description = DEFAULT_DESC, // Default fallback
   image,
   canonical,
   noindex,
   robots,
 }: MetaHeadProps) {
   const router = useRouter();
-  const path =
-    (router.asPath || "/").split("#")[0].split("?")[0] || "/";
+  const path = (router.asPath || "/").split("#")[0].split("?")[0] || "/";
   const computed = canonical || `${BASE_URL}${path}`;
   const canonicalUrl = normalizeCanonical(computed);
   const ogImage = absoluteUrl(image || DEFAULT_IMAGE);

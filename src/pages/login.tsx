@@ -1,4 +1,3 @@
-// src/pages/login.tsx
 "use client";
 
 import { useEffect, useState, FormEvent, useMemo } from "react";
@@ -8,35 +7,29 @@ import { sendPasswordResetEmail } from "firebase/auth";
 import { useAuth } from "../context/AuthContext";
 import { auth } from "../firebase/clientApp";
 import MetaHead from "../components/MetaHead";
+import { Mail, Lock, User, Eye, EyeOff, Chrome, Facebook } from "lucide-react";
 
 const friendly = (code: string) => {
   switch (code) {
-    case "auth/invalid-email":
-      return "That email address looks invalid.";
-    case "auth/email-already-in-use":
-      return "That email is already registered. Try signing in.";
-    case "auth/weak-password":
-      return "Password should be at least 6 characters.";
+    case "auth/invalid-email": return "That email address looks invalid.";
+    case "auth/email-already-in-use": return "That email is already registered. Try signing in.";
+    case "auth/weak-password": return "Password should be at least 6 characters.";
     case "auth/user-not-found":
-    case "auth/wrong-password":
-      return "Incorrect email or password.";
-    case "auth/too-many-requests":
-      return "Too many attempts. Please wait a bit and try again.";
-    default:
-      return "Something went wrong. Please try again.";
+    case "auth/wrong-password": return "Incorrect email or password.";
+    case "auth/too-many-requests": return "Too many attempts. Please wait a bit.";
+    default: return "Something went wrong. Please try again.";
   }
 };
 
 export default function LoginPage() {
-  const { signInGoogle, registerEmail, signInEmail, loading, user } = useAuth();
+  const { signInGoogle, signInFacebook, registerEmail, signInEmail, loading, user } = useAuth();
   const router = useRouter();
 
-  // bounce if already signed in
+  // Redirect if already logged in
   useEffect(() => {
-    if (user) router.replace("/profile");
-  }, [user, router]);
+    if (user && !loading) router.replace("/profile");
+  }, [user, loading, router]);
 
-  // state
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
@@ -45,10 +38,11 @@ export default function LoginPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [showPass, setShowPass] = useState(false);
 
-  // show success after email verification redirect
+  // Check for verification success from URL
   useEffect(() => {
-    const q = router.query as { verified?: string };
-    if (q?.verified === "1") setMsg("Email verified! You can sign in now.");
+    if (router.query?.verified === "1") {
+      setMsg("Email verified successfully! You can now sign in.");
+    }
   }, [router.query]);
 
   const onSubmitEmail = async (e: FormEvent) => {
@@ -58,212 +52,169 @@ export default function LoginPage() {
     try {
       if (mode === "login") {
         await signInEmail(email, pass);
-        return;
+        router.push("/");
+      } else {
+        await registerEmail(email, pass, displayName.trim() || undefined);
+        setMsg("Verification email sent! Please check your inbox before logging in.");
+        setMode("login"); // Switch to login so they can sign in after verifying
       }
-      await registerEmail(email, pass, displayName.trim() || undefined);
-      router.replace("/auth/verify-prompt");
     } catch (e: any) {
-      setErr(e?.code ? friendly(e.code) : e?.message ?? "Something went wrong.");
+      setErr(e?.code ? friendly(e.code) : e?.message ?? "An error occurred.");
     }
   };
 
   const resetPassword = async () => {
     setErr(null);
-    setMsg(null);
-    if (!email) {
-      setErr("Enter your email first to reset your password.");
-      return;
-    }
+    if (!email) return setErr("Please enter your email address first.");
     try {
       await sendPasswordResetEmail(auth, email);
-      setMsg("Password reset email sent. Please check your inbox.");
+      setMsg("Password reset link sent to your email.");
     } catch (e: any) {
-      setErr(e?.code ? friendly(e.code) : e?.message ?? "Something went wrong.");
+      setErr(friendly(e.code));
     }
   };
 
-  // SEO text (MetaHead auto-builds canonical from current route)
-  const metaTitle = useMemo(
-    () => (mode === "login" ? "Sign in | Pinoy Tambayan Hub" : "Create account | Pinoy Tambayan Hub"),
-    [mode]
-  );
-  const metaDesc =
-    mode === "login"
-      ? "Sign in to Pinoy Tambayan Hub using Google or your email to join the community."
-      : "Create your Pinoy Tambayan Hub account using email or sign in with Google.";
-
   return (
     <>
-      <MetaHead title={metaTitle} description={metaDesc} noindex />
+      <MetaHead 
+        title={mode === "login" ? "Sign In | Pinoy Tambayan" : "Create Account | Pinoy Tambayan"} 
+        description="Join the Pinoy Tambayan community to save your favorite radio stations."
+        noindex 
+      />
 
-      <section className="section">
-        <div className="container-page max-w-md">
-          {/* Heading + tabs */}
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="page-title mb-0">
-              {mode === "login" ? "Sign in" : "Create account"}
+      <div className="min-h-screen flex items-center justify-center bg-[#0f172a] px-4 py-12">
+        <div className="max-w-md w-full space-y-8">
+          
+          {/* Header */}
+          <div className="text-center">
+            <h1 className="text-4xl font-black text-white italic uppercase tracking-tighter">
+              {mode === "login" ? "Welcome Back" : "Join the Hub"}
             </h1>
-            {/* Quick home link for small screens */}
-            <Link href="/" className="text-sm text-blue-400 hover:underline">
-              ← Home
-            </Link>
+            <p className="mt-2 text-slate-400">
+              {mode === "login" ? "Sign in to access your favorites" : "Create an account to get started"}
+            </p>
           </div>
 
-          {/* Segmented control */}
-          <div className="mb-5 inline-flex rounded-lg border border-white/10 overflow-hidden" role="tablist" aria-label="Auth mode">
-            <button
-              type="button"
+          {/* Toggle Tabs */}
+          <div className="flex p-1 bg-slate-900/50 rounded-2xl border border-white/5">
+            <button 
               onClick={() => setMode("login")}
-              role="tab"
-              aria-selected={mode === "login"}
-              className={`px-4 py-2 text-sm font-medium transition ${
-                mode === "login" ? "bg-blue-600 text-white" : "bg-white/5 text-gray-200 hover:bg-white/10"
-              }`}
+              className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${mode === "login" ? "bg-blue-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
             >
-              Sign in
+              Login
             </button>
-            <button
-              type="button"
+            <button 
               onClick={() => setMode("register")}
-              role="tab"
-              aria-selected={mode === "register"}
-              className={`px-4 py-2 text-sm font-medium transition border-l border-white/10 ${
-                mode === "register" ? "bg-blue-600 text-white" : "bg-white/5 text-gray-200 hover:bg-white/10"
-              }`}
+              className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${mode === "register" ? "bg-blue-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
             >
               Register
             </button>
           </div>
 
-          {/* Subtitle */}
-          <p className="text-gray-400 mb-4 text-sm">Continue with Google or use your email.</p>
-
           {/* Alerts */}
-          {err && (
-            <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2" role="alert" aria-live="assertive">
-              {err}
-            </div>
-          )}
-          {msg && (
-            <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 px-3 py-2" role="status" aria-live="polite">
-              {msg}
+          {(err || msg) && (
+            <div className={`p-4 rounded-2xl border animate-in fade-in zoom-in duration-300 ${err ? "bg-red-500/10 border-red-500/50 text-red-500" : "bg-emerald-500/10 border-emerald-500/50 text-emerald-400"}`}>
+              <p className="text-sm font-medium text-center">{err || msg}</p>
             </div>
           )}
 
-          {/* Card */}
-          <div className="card">
-            {/* Email form */}
-            <form onSubmit={onSubmitEmail} className="space-y-3" noValidate>
+          <div className="bg-slate-900/50 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/10 shadow-2xl">
+            <form onSubmit={onSubmitEmail} className="space-y-4">
               {mode === "register" && (
-                <div>
-                  <label htmlFor="displayName" className="sr-only">Display name</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-4 text-slate-500" size={20} />
                   <input
-                    id="displayName"
-                    className="input"
-                    placeholder="Display name (optional)"
+                    type="text"
+                    placeholder="Display Name"
+                    className="w-full bg-slate-800/50 border border-white/5 p-4 pl-12 rounded-2xl text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                   />
                 </div>
               )}
 
-              <div>
-                <label htmlFor="email" className="sr-only">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-4 text-slate-500" size={20} />
                 <input
-                  id="email"
-                  className="input"
-                  placeholder="Email"
                   type="email"
-                  autoComplete="email"
+                  placeholder="Email Address"
+                  className="w-full bg-slate-800/50 border border-white/5 p-4 pl-12 rounded-2xl text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </div>
 
-              <div>
-                <label htmlFor="password" className="sr-only">Password</label>
-                <div className="relative">
-                  <input
-                    id="password"
-                    className="input pr-12"
-                    placeholder="Password"
-                    type={showPass ? "text" : "password"}
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
-                    value={pass}
-                    onChange={(e) => setPass(e.target.value)}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass((s) => !s)}
-                    className="absolute inset-y-0 right-2 my-auto h-8 px-2 rounded text-xs text-gray-300 hover:text-white hover:bg-white/10"
-                    aria-label={showPass ? "Hide password" : "Show password"}
-                  >
-                    {showPass ? "Hide" : "Show"}
-                  </button>
-                </div>
+              <div className="relative">
+                <Lock className="absolute left-4 top-4 text-slate-500" size={20} />
+                <input
+                  type={showPass ? "text" : "password"}
+                  placeholder="Password"
+                  className="w-full bg-slate-800/50 border border-white/5 p-4 pl-12 pr-12 rounded-2xl text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                  value={pass}
+                  onChange={(e) => setPass(e.target.value)}
+                  required
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPass(!showPass)}
+                  className="absolute right-4 top-4 text-slate-500 hover:text-white"
+                >
+                  {showPass ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
               </div>
 
-              <button type="submit" disabled={loading} className="btn btn-primary w-full">
-                {loading ? "Please wait…" : mode === "login" ? "Sign in with Email" : "Register with Email"}
-              </button>
-
               {mode === "login" && (
-                <button type="button" onClick={resetPassword} className="text-sm text-blue-400 hover:underline">
-                  Forgot password?
-                </button>
+                <div className="flex justify-end">
+                  <button type="button" onClick={resetPassword} className="text-xs text-blue-500 hover:underline">
+                    Forgot Password?
+                  </button>
+                </div>
               )}
+
+              <button 
+                type="submit" 
+                disabled={loading}
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-600/20 active:scale-95"
+              >
+                {loading ? "Processing..." : mode === "login" ? "Sign In" : "Create Account"}
+              </button>
             </form>
 
-            {/* Divider */}
-            <div className="flex items-center my-5 gap-3 text-gray-500">
-              <div className="flex-1 h-px bg-gray-700" />
-              <span className="text-xs">OR</span>
-              <div className="flex-1 h-px bg-gray-700" />
+            <div className="relative my-8">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/5"></div></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-slate-900 px-4 text-slate-500">Or Continue With</span></div>
             </div>
 
-            {/* Socials */}
-            <div className="space-y-2">
-              <button
+            <div className="grid grid-cols-2 gap-4">
+              <button 
                 onClick={signInGoogle}
-                disabled={loading}
-                className="w-full rounded-lg bg-white text-gray-900 px-4 py-3 font-semibold hover:opacity-90 transition disabled:opacity-60"
+                className="flex items-center justify-center gap-2 p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all text-white text-sm font-semibold"
               >
-                Continue with Google
+                <Chrome size={18} className="text-red-400" /> Google
+              </button>
+              <button 
+                onClick={signInFacebook}
+                className="flex items-center justify-center gap-2 p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all text-white text-sm font-semibold"
+              >
+                <Facebook size={18} className="text-blue-500" /> Facebook
               </button>
             </div>
           </div>
 
-          {/* Bottom links */}
-          <div className="mt-4 text-sm text-gray-400">
-            {mode === "login" ? (
-              <>
-                Don’t have an account?{" "}
-                <button className="text-blue-400 hover:underline" onClick={() => setMode("register")}>
-                  Register
-                </button>
-              </>
-            ) : (
-              <>
-                Already have an account?{" "}
-                <button className="text-blue-400 hover:underline" onClick={() => setMode("login")}>
-                  Sign in
-                </button>
-              </>
-            )}
-          </div>
-
-          <p className="text-xs text-gray-500 mt-4">
+          <p className="text-center text-slate-500 text-xs px-4">
             By continuing, you agree to our{" "}
-            <Link href="/terms" className="text-blue-400 hover:underline">Terms</Link>{" "}
-            and{" "}
-            <Link href="/privacy" className="text-blue-400 hover:underline">Privacy Policy</Link>.
+            <Link href="/terms" className="text-blue-500 hover:underline">Terms of Service</Link> and{" "}
+            <Link href="/privacy" className="text-blue-500 hover:underline">Privacy Policy</Link>.
           </p>
 
-          <div className="page-bottom-spacer" />
+          <div className="text-center">
+            <Link href="/" className="text-slate-400 hover:text-white text-sm transition-colors">
+              ← Back to Radio Hub
+            </Link>
+          </div>
         </div>
-      </section>
+      </div>
     </>
   );
 }

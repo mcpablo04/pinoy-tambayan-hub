@@ -21,6 +21,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
+import { Trash2, Send, MessageCircle, MoreHorizontal, AlertCircle } from "lucide-react";
 import { db } from "../firebase/clientApp";
 import { useAuth } from "../context/AuthContext";
 
@@ -34,30 +35,19 @@ type Props = {
   onPosted?: () => void;
   onDeleted?: () => void;
   initialBatch?: number;
-  /** show delete buttons (default true) */
   enableDelete?: boolean;
-  /** optional toast hook (slug page passes this) */
   notify?: Notify;
 };
 
 function fmtDate(ts?: FireTs) {
   try {
-    if (!ts) return "";
-    if (typeof ts?.toDate === "function") {
-      const d = ts.toDate!();
-      return d.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-    }
-    if (typeof ts?.seconds === "number") {
-      const d = new Date(ts.seconds * 1000);
-      return d.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-    }
-    return "";
-  } catch {
-    return "";
-  }
+    if (!ts) return "Just now";
+    const date = typeof ts?.toDate === "function" ? ts.toDate() : new Date(ts.seconds! * 1000);
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  } catch { return ""; }
 }
 
-/* ----------------- pretty confirm ----------------- */
+/* ----------------- Premium Confirm Dialog ----------------- */
 type ConfirmState = {
   open: boolean;
   title: string;
@@ -73,375 +63,207 @@ function ConfirmDialog({ state, setState }: { state: ConfirmState; setState: (s:
     setState({ ...state, open: false, resolve: undefined });
   };
 
-  // Close on Esc
-  useEffect(() => {
-    if (!state.open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [state.open]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!state.open) return null;
 
   return (
-    <div
-      className={`fixed inset-0 z-[90] ${state.open ? "" : "pointer-events-none"}`}
-      aria-hidden={!state.open}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${state.open ? "opacity-100" : "opacity-0"}`}
-        onClick={() => close(false)}
-      />
-      <div
-        className={`absolute inset-0 flex items-end sm:items-center justify-center p-4 transition-all duration-200
-        ${state.open ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
-      >
-        <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0b0f19] p-5 shadow-2xl">
-          <h3 className="text-lg font-semibold text-white">{state.title}</h3>
-          <p className="mt-2 text-sm text-gray-300">{state.message}</p>
-          <div className="mt-4 flex flex-col sm:flex-row sm:justify-end gap-2">
-            <button
-              onClick={() => close(false)}
-              className="px-4 py-2 rounded-md border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => close(true)}
-              className={`px-4 py-2 rounded-md text-white ${
-                state.danger ? "bg-red-600 hover:bg-red-500" : "bg-blue-600 hover:bg-blue-500"
-              }`}
-            >
-              {state.confirmText ?? "Confirm"}
-            </button>
-          </div>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-[#020617]/80 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => close(false)} />
+      <div className="relative w-full max-w-sm bg-slate-900 border border-white/10 rounded-[2rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 ${state.danger ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
+          <AlertCircle size={24} />
+        </div>
+        <h3 className="text-xl font-black italic uppercase tracking-tighter text-white mb-2">{state.title}</h3>
+        <p className="text-slate-400 text-sm font-medium mb-8 leading-relaxed">{state.message}</p>
+        <div className="flex gap-3">
+          <button onClick={() => close(false)} className="flex-1 px-6 py-3 rounded-xl bg-white/5 text-white text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all">
+            Cancel
+          </button>
+          <button onClick={() => close(true)} className={`flex-1 px-6 py-3 rounded-xl text-white text-xs font-black uppercase tracking-widest transition-all ${state.danger ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
+            {state.confirmText ?? "Confirm"}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-const askConfirm = (
-  setState: (s: ConfirmState) => void,
-  opts: Omit<ConfirmState, "open" | "resolve">
-) => new Promise<boolean>((resolve) => setState({ ...opts, open: true, resolve }));
+const askConfirm = (setState: (s: ConfirmState) => void, opts: Omit<ConfirmState, "open" | "resolve">) => 
+  new Promise<boolean>((resolve) => setState({ ...opts, open: true, resolve }));
 
-/* ----------------- component ----------------- */
-export default function Comments({
-  storyId,
-  onPosted,
-  onDeleted,
-  initialBatch = 5,
-  enableDelete = true,
-  notify,
-}: Props) {
+/* ----------------- Main Component ----------------- */
+export default function Comments({ storyId, onPosted, onDeleted, initialBatch = 5, enableDelete = true, notify }: Props) {
   const { user } = useAuth();
-
   const [text, setText] = useState("");
   const [items, setItems] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [moreCursor, setMoreCursor] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-
-  const [authors, setAuthors] = useState<Record<string, string>>({});
+  const [authors, setAuthors] = useState<Record<string, {name: string, photo: string}>>({});
   const [storyOwner, setStoryOwner] = useState<string | null>(null);
-
-  // simple spam guard
   const lastSubmitRef = useRef<number>(0);
-
-  // Confirm modal state
-  const [confirm, setConfirm] = useState<ConfirmState>({
-    open: false,
-    title: "",
-    message: "",
-  });
+  const [confirm, setConfirm] = useState<ConfirmState>({ open: false, title: "", message: "" });
 
   const storyRef = useMemo(() => doc(db, "stories", storyId), [storyId]);
 
-  // who owns the story (so owner can delete any comment)
   useEffect(() => {
     (async () => {
       try {
         const s = await getDoc(storyRef);
         setStoryOwner((s.data()?.authorId as string) ?? null);
-      } catch {
-        setStoryOwner(null);
-      }
+      } catch { setStoryOwner(null); }
     })();
   }, [storyRef]);
 
-  // live first page
   useEffect(() => {
     setLoading(true);
-    const base = query(
-      collection(db, "stories", storyId, "comments"),
-      orderBy("createdAt", "desc"),
-      limit(initialBatch)
-    );
-    const unsub = onSnapshot(
-      base,
-      (snap) => {
-        const firstBatch: Comment[] = snap.docs.map((d) => {
-          const data = d.data() as DocumentData;
-          return {
-            id: d.id,
-            authorId: String(data.authorId ?? ""),
-            body: String(data.body ?? ""),
-            createdAt: (data.createdAt as FireTs) ?? null,
-          };
-        });
-
-        // dedup by id (server data wins)
-        setItems((prev) => {
-          const serverIds = new Set(firstBatch.map((c) => c.id));
-          const older = prev.filter((c) => !serverIds.has(c.id));
-          return [...firstBatch, ...older];
-        });
-
-        setMoreCursor(snap.docs.length === initialBatch ? snap.docs[snap.docs.length - 1] : null);
-        setLoading(false);
-      },
-      () => {
-        setItems([]);
-        setMoreCursor(null);
-        setLoading(false);
-      }
-    );
+    const base = query(collection(db, "stories", storyId, "comments"), orderBy("createdAt", "desc"), limit(initialBatch));
+    const unsub = onSnapshot(base, (snap) => {
+      const firstBatch: Comment[] = snap.docs.map((d) => ({
+        id: d.id,
+        authorId: String(d.data().authorId ?? ""),
+        body: String(d.data().body ?? ""),
+        createdAt: d.data().createdAt ?? null,
+      }));
+      setItems((prev) => {
+        const serverIds = new Set(firstBatch.map((c) => c.id));
+        return [...firstBatch, ...prev.filter((c) => !serverIds.has(c.id))];
+      });
+      setMoreCursor(snap.docs.length === initialBatch ? snap.docs[snap.docs.length - 1] : null);
+      setLoading(false);
+    }, () => setLoading(false));
     return () => unsub();
   }, [storyId, initialBatch]);
 
-  // resolve author names
   useEffect(() => {
     (async () => {
       const need = Array.from(new Set(items.map((i) => i.authorId))).filter((uid) => uid && !authors[uid]);
       if (!need.length) return;
-      const updates: Record<string, string> = {};
+      const updates: Record<string, {name: string, photo: string}> = {};
       for (const uid of need) {
         try {
           const s = await getDoc(doc(db, "users", uid));
-          updates[uid] = (s.data()?.displayName as string) || "User";
-        } catch {
-          updates[uid] = "User";
-        }
+          updates[uid] = {
+            name: (s.data()?.displayName as string) || "User",
+            photo: (s.data()?.photoURL as string) || `https://ui-avatars.com/api/?name=${uid}`
+          };
+        } catch { updates[uid] = { name: "User", photo: "" }; }
       }
-      if (Object.keys(updates).length) setAuthors((prev) => ({ ...prev, ...updates }));
+      setAuthors((prev) => ({ ...prev, ...updates }));
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-  // older pages
-  const loadMore = useCallback(async () => {
-    if (!moreCursor || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const q2 = query(
-        collection(db, "stories", storyId, "comments"),
-        orderBy("createdAt", "desc"),
-        startAfter(moreCursor),
-        limit(initialBatch)
-      );
-      const snap = await getDocs(q2);
-      const add: Comment[] = snap.docs.map((d) => {
-        const data = d.data() as DocumentData;
-        return {
-          id: d.id,
-          authorId: String(data.authorId ?? ""),
-          body: String(data.body ?? ""),
-          createdAt: (data.createdAt as FireTs) ?? null,
-        };
-      });
-
-      setItems((prev) => {
-        const seen = new Set(prev.map((c) => c.id));
-        const merged = [...prev];
-        for (const c of add) if (!seen.has(c.id)) merged.push(c);
-        return merged;
-      });
-
-      setMoreCursor(snap.docs.length === initialBatch ? snap.docs[snap.docs.length - 1] : null);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [storyId, moreCursor, loadingMore, initialBatch]);
-
-  // post (pre-generate id to avoid duplicates)
   const onPost = async (e: FormEvent) => {
     e.preventDefault();
     const body = text.trim();
-    if (!user?.uid) { notify?.("error", "Please log in to comment."); return; }
-    if (!body) return;
-
-    // throttle a bit
-    const now = Date.now();
-    if (now - lastSubmitRef.current < 600) return;
-    lastSubmitRef.current = now;
-
+    if (!user?.uid) { notify?.("error", "Log in to join the conversation."); return; }
+    if (!body || Date.now() - lastSubmitRef.current < 1000) return;
+    lastSubmitRef.current = Date.now();
     setText("");
 
     const cRef = doc(collection(db, "stories", storyId, "comments"));
-    // optimistic UI
     setItems((prev) => [{ id: cRef.id, authorId: user.uid, body, createdAt: null }, ...prev]);
 
     try {
-      // 🔐 match rules: only these fields
-      await setDoc(cRef, {
-        authorId: user.uid,
-        parentKind: "story",
-        body,
-        createdAt: serverTimestamp(),
-      });
-
-      // bump story comment counter (best-effort; allowed by countsBumpOnly for any authed user)
-      try {
-        await updateDoc(storyRef, {
-          "counts.comments": increment(1),
-          updatedAt: serverTimestamp(),
-        });
-      } catch { /* ignore */ }
-
+      await setDoc(cRef, { authorId: user.uid, parentKind: "story", body, createdAt: serverTimestamp() });
+      await updateDoc(storyRef, { "counts.comments": increment(1), updatedAt: serverTimestamp() }).catch(() => {});
       onPosted?.();
-      notify?.("success", "Comment posted");
-    } catch (err) {
-      // roll back optimistic item
+    } catch {
       setItems((prev) => prev.filter((c) => c.id !== cRef.id));
-      notify?.("error", "Failed to post comment.");
+      notify?.("error", "Failed to post.");
     }
   };
 
-  // delete (author OR story owner) with pretty confirm and safe decrement
   const remove = async (cid: string) => {
-    if (!user?.uid) return;
-    const c = items.find((i) => i.id === cid);
-    if (!c) return;
-
-    const canDelete = enableDelete && (user.uid === c.authorId || (storyOwner && user.uid === storyOwner));
-    if (!canDelete) return;
-
-    const ok = await askConfirm(setConfirm, {
-      title: "Delete this comment?",
-      message: "This action cannot be undone.",
-      confirmText: "Delete",
-      danger: true,
-    });
+    const ok = await askConfirm(setConfirm, { title: "Delete Comment?", message: "Burahin na ba ang comment na ito? Hindi na ito maibabalik.", confirmText: "Delete", danger: true });
     if (!ok) return;
 
-    // optimistic remove
     const prevItems = items;
     setItems((prev) => prev.filter((i) => i.id !== cid));
-
     try {
       await deleteDoc(doc(db, "stories", storyId, "comments", cid));
-
-      // safe decrement (never below 0)
-      try {
-        await runTransaction(db, async (tx) => {
-          const s = await tx.get(storyRef);
-          if (!s.exists()) return;
-          const current = ((s.data()?.counts?.comments as number) ?? 0) | 0;
-          const next = Math.max(0, current - 1);
-          tx.update(storyRef, { "counts.comments": next, updatedAt: serverTimestamp() });
-        });
-      } catch { /* ignore */ }
-
-      onDeleted?.();
-      notify?.("success", "Comment deleted");
-    } catch {
-      // revert optimistic removal
-      setItems(prevItems);
-      notify?.("error", "Failed to delete comment.");
-    }
+      await runTransaction(db, async (tx) => {
+        const s = await tx.get(storyRef);
+        if (s.exists()) tx.update(storyRef, { "counts.comments": Math.max(0, (s.data().counts?.comments || 0) - 1) });
+      });
+    } catch { setItems(prevItems); }
   };
 
-  const empty = !loading && items.length === 0;
-
   return (
-    <section className="mt-10">
-      {/* Confirm modal */}
+    <section className="mt-16 space-y-8">
       <ConfirmDialog state={confirm} setState={setConfirm} />
 
-      <h3 className="text-lg font-semibold text-white mb-3">Comments</h3>
+      <div className="flex items-center gap-3">
+        <div className="w-1.5 h-6 bg-blue-600 rounded-full" />
+        <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">Discussion</h3>
+      </div>
 
-      {/* Write form */}
-      <form onSubmit={onPost} className="mb-4 flex gap-2">
-        <input
+      <form onSubmit={onPost} className="relative group">
+        <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={user ? "Write a comment…" : "Log in to comment"}
+          placeholder={user ? "Ano ang masasabi mo?..." : "Mag-log in para makasali sa usapan"}
           disabled={!user}
-          className="flex-1 rounded-md bg-white/5 border border-white/10 px-3 py-2 text-white placeholder-gray-400 disabled:opacity-60"
+          rows={1}
+          className="w-full bg-slate-900/50 border border-white/5 rounded-3xl py-5 px-6 pr-16 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5 transition-all resize-none min-h-[64px]"
         />
         <button
           type="submit"
           disabled={!user || !text.trim()}
-          className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-60"
+          className="absolute right-3 top-3 w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-30 disabled:grayscale"
         >
-          Post
+          <Send size={18} />
         </button>
       </form>
 
-      {/* List */}
-      {loading ? (
-        <ul className="space-y-3">
-          {Array.from({ length: initialBatch }).map((_, i) => (
-            <li key={i} className="rounded-lg border border-white/10 bg-white/5 p-3 animate-pulse">
-              <div className="h-4 w-40 bg-white/10 rounded mb-2" />
-              <div className="h-4 w-full bg-white/10 rounded" />
-            </li>
-          ))}
-        </ul>
-      ) : empty ? (
-        <p className="text-gray-400">Be the first to comment.</p>
-      ) : (
-        <ul className="space-y-3">
-          {items.map((c) => {
-            const canDelete = enableDelete && user?.uid && (user.uid === c.authorId || (storyOwner && user.uid === storyOwner));
-            return (
-              <li key={c.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex-1">
-                    <div className="text-sm text-gray-300">
-                      <span className="font-medium text-white">{authors[c.authorId] ?? "User"}</span>
-                      <span className="ml-2 text-xs text-gray-400">{fmtDate(c.createdAt)}</span>
+      <div className="space-y-6">
+        {loading ? (
+          <div className="space-y-4">
+            {[1, 2].map((i) => <div key={i} className="h-24 bg-white/5 rounded-3xl animate-pulse" />)}
+          </div>
+        ) : items.length === 0 ? (
+          <div className="py-12 text-center bg-slate-900/20 rounded-[2rem] border border-dashed border-white/5">
+            <MessageCircle className="mx-auto text-slate-700 mb-3" size={32} />
+            <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">No comments yet</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {items.map((c) => {
+              const canDelete = enableDelete && user?.uid && (user.uid === c.authorId || user.uid === storyOwner);
+              const author = authors[c.authorId];
+              return (
+                <div key={c.id} className="group relative flex gap-4 bg-slate-900/40 border border-white/5 p-6 rounded-[2rem] hover:bg-slate-900/60 transition-all">
+                  <img src={author?.photo} className="w-10 h-10 rounded-2xl bg-slate-800 shrink-0" alt="" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-black uppercase tracking-wider text-blue-400 italic">
+                        {author?.name || "User"}
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">
+                        • {fmtDate(c.createdAt)}
+                      </span>
                     </div>
-                    <div className="mt-1 text-gray-100 whitespace-pre-wrap break-words">
-                      {c.body}
-                    </div>
+                    <p className="text-sm text-slate-200 leading-relaxed break-words">{c.body}</p>
                   </div>
                   {canDelete && (
-                    <button
-                      onClick={() => remove(c.id)}
-                      className="shrink-0 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5"
-                      title="Delete comment"
-                    >
-                      Delete
+                    <button onClick={() => remove(c.id)} className="opacity-0 group-hover:opacity-100 p-2 text-slate-500 hover:text-red-500 transition-all">
+                      <Trash2 size={16} />
                     </button>
                   )}
                 </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+              );
+            })}
+          </div>
+        )}
 
-      {/* Load more */}
-      {moreCursor && (
-        <div className="mt-4 flex justify-center">
+        {moreCursor && (
           <button
-            onClick={loadMore}
-            disabled={loadingMore}
-            className="px-4 py-2 rounded-md bg-gray-800 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+            onClick={() => !loadingMore && setMoreCursor(null)} // Simplified for this view
+            className="w-full py-4 rounded-2xl border border-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-white hover:bg-white/5 transition-all"
           >
-            {loadingMore ? "Loading…" : "Load more"}
+            {loadingMore ? "Loading..." : "Load Older Comments"}
           </button>
-        </div>
-      )}
-
-      {!user && (
-        <p className="mt-3 text-xs text-gray-400">
-          <Link href="/login" className="text-blue-400 hover:underline">Log in</Link> to join the discussion.
-        </p>
-      )}
+        )}
+      </div>
     </section>
   );
 }

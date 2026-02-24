@@ -1,132 +1,99 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useState,
-  useEffect,
-  ReactNode,
-} from "react";
-import type { Station } from "../components/RadioPlayer";
+import { createContext, useContext, useMemo, useState, useEffect, ReactNode, useRef } from "react";
 import { STATIONS } from "../data/stations";
 
-type PlayerContextShape = {
-  station: Station;
-  setStation: (s: Station, playNow?: boolean) => void;
+export type Station = {
+  id: string;
+  name: string;
+  streamUrl: string;
+  logo: string;
+};
 
-  // Floating player UI visibility
+type PlayerContextShape = {
+  currentStation: Station;
+  isPlaying: boolean;
+  setIsPlaying: (v: boolean) => void;
   showUI: boolean;
   setShowUI: (v: boolean) => void;
-
-  // Signal for RadioPlayer to start playback immediately
-  playOnLoadKey: number;
-  _bumpPlayOnLoadKey: () => void;
-
-  // Helpers (current neighbors)
+  volume: number;
+  setVolume: (v: number) => void;
   next: Station;
   prev: Station;
+  setStation: (s: Station, playNow?: boolean) => void;
 };
 
 const PlayerContext = createContext<PlayerContextShape | null>(null);
-
-// Keys for persistence
 const STORAGE_KEY = "pth_station_id";
-
-function findById(id?: string): Station {
-  if (!id) return STATIONS[0];
-  return STATIONS.find((s) => s.id === id) ?? STATIONS[0];
-}
+const VOL_KEY = "pth_volume";
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
-  // Hydration-safe: start with default, then restore on mount
-  const [station, setStationState] = useState<Station>(STATIONS[0]);
+  const stationsList = STATIONS as Station[];
+  const [currentStation, setCurrentStation] = useState<Station>(stationsList[0]);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [showUI, setShowUI] = useState(false);
+  const [volume, setVolume] = useState(0.5);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // When true, GlobalPlayer/RadioPlayer will trigger immediate play on station change
-  const [autoPlay, setAutoPlay] = useState(false);
-
-  // Integer key the RadioPlayer can watch to call play()
-  const [playOnLoadKey, setPlayOnLoadKey] = useState(0);
-  const _bumpPlayOnLoadKey = () => setPlayOnLoadKey((k) => k + 1);
-
-  const setStation = (s: Station, playNow = false) => {
-    setStationState(s);
-    if (playNow) {
-      setAutoPlay(true); // next microtask will bump the key
-      setShowUI(true);   // ensure the floating player is visible
+  useEffect(() => {
+    audioRef.current = new Audio();
+    const savedStation = localStorage.getItem(STORAGE_KEY);
+    if (savedStation) {
+      const restored = stationsList.find((s) => s.id === savedStation);
+      if (restored) setCurrentStation(restored);
     }
-  };
+    const savedVol = localStorage.getItem(VOL_KEY);
+    if (savedVol) {
+      const v = parseFloat(savedVol);
+      setVolume(v);
+      audioRef.current.volume = v;
+    }
+    return () => { audioRef.current?.pause(); audioRef.current = null; };
+  }, [stationsList]);
 
-  // Restore saved station after mount
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY) || undefined;
-      if (saved) {
-        const restored = findById(saved);
-        setStationState(restored);
-      }
-    } catch {}
-  }, []);
+    if (!audioRef.current) return;
+    if (audioRef.current.src !== currentStation.streamUrl) {
+      audioRef.current.src = currentStation.streamUrl;
+      audioRef.current.load(); 
+    }
+    if (isPlaying) {
+      audioRef.current.play().catch(() => setIsPlaying(false));
+    } else {
+      audioRef.current.pause();
+    }
+    localStorage.setItem(STORAGE_KEY, currentStation.id);
+  }, [currentStation, isPlaying]);
 
-  // Persist selected station id on change
   useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, station.id);
-    } catch {}
-  }, [station.id]);
-
-  // derive next/prev (loop over STATIONS)
-  const { next, prev } = useMemo(() => {
-    const idx = STATIONS.findIndex((x) => x.id === station.id);
-    const next = STATIONS[(idx + 1) % STATIONS.length];
-    const prev = STATIONS[(idx - 1 + STATIONS.length) % STATIONS.length];
-    return { next, prev };
-  }, [station]);
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+      localStorage.setItem(VOL_KEY, volume.toString());
+    }
+  }, [volume]);
 
   const value: PlayerContextShape = {
-    station,
-    setStation,
+    currentStation,
+    isPlaying,
+    setIsPlaying,
     showUI,
     setShowUI,
-    playOnLoadKey,
-    _bumpPlayOnLoadKey,
-    next,
-    prev,
+    volume,
+    setVolume,
+    setStation: (s: Station, playNow?: boolean) => {
+      setCurrentStation(s);
+      setShowUI(true);
+      if (playNow) setIsPlaying(true);
+    },
+    next: stationsList[(stationsList.findIndex(x => x.id === currentStation.id) + 1) % stationsList.length],
+    prev: stationsList[(stationsList.findIndex(x => x.id === currentStation.id) - 1 + stationsList.length) % stationsList.length],
   };
 
-  return (
-    <PlayerContext.Provider value={value}>
-      <AutoPlayBridge
-        autoPlay={autoPlay}
-        clearAutoPlay={() => setAutoPlay(false)}
-        bump={_bumpPlayOnLoadKey}
-      />
-      {children}
-    </PlayerContext.Provider>
-  );
+  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
 
-function AutoPlayBridge({
-  autoPlay,
-  clearAutoPlay,
-  bump,
-}: {
-  autoPlay: boolean;
-  clearAutoPlay: () => void;
-  bump: () => void;
-}) {
-  if (autoPlay) {
-    queueMicrotask(() => {
-      bump();
-      clearAutoPlay();
-    });
-  }
-  return null;
-}
-
-export function usePlayer() {
+export const usePlayer = () => {
   const ctx = useContext(PlayerContext);
   if (!ctx) throw new Error("usePlayer must be used within PlayerProvider");
   return ctx;
-}
+};

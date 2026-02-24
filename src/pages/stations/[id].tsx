@@ -1,37 +1,40 @@
-// src/pages/stations/[id].tsx
+"use client";
+
 import Head from "next/head";
 import Link from "next/link";
 import { useMemo } from "react";
-import { usePlayer } from "../../context/PlayerContext";
-import type { Station as BaseStation } from "../../components/RadioPlayer";
+import { usePlayer, Station } from "../../context/PlayerContext"; // Added Station type
 import { STATIONS } from "../../data/stations";
+import Layout from "../../components/Layout";
+import MetaHead from "../../components/MetaHead";
 
-type StationEx = BaseStation & {
+/* ===================== Types ===================== */
+type StationEx = {
+  id: string;
+  name: string;
+  logo: string;
+  streamUrl: string;
   description?: string;
   genre?: string;
   city?: string;
   country?: string;
   website?: string;
-  officialEmbedUrl?: string;
 };
 
 export default function StationDetail({ station }: { station: StationEx }) {
-  const { setStation, setShowUI } = usePlayer();
+  // FIXED: Changed playStation to setStation
+  const { setStation, currentStation, isPlaying, setIsPlaying, setShowUI } = usePlayer();
+
+  const isCurrent = currentStation?.id === station.id;
 
   const related = useMemo(() => {
     const key = (station.genre ?? "").toLowerCase();
     const pool = STATIONS.filter((s) => s.id !== station.id);
     const genreMatches = pool.filter(
-      (s) => (s as StationEx).genre?.toLowerCase() === key
+      (s) => (s as any).genre?.toLowerCase() === key
     );
-    const list = genreMatches.length ? genreMatches : pool;
-    return list.slice(0, 8);
+    return (genreMatches.length ? genreMatches : pool).slice(0, 6);
   }, [station]);
-
-  const title = `${station.name} — Listen Live | Pinoy Tambayan Hub`;
-  const desc =
-    station.description ||
-    `${station.name} live stream • ${station.genre ?? "Radio"} • ${station.city ?? ""} ${station.country ?? ""}`.trim();
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -39,153 +42,130 @@ export default function StationDetail({ station }: { station: StationEx }) {
     name: station.name,
     areaServed: station.country || "Philippines",
     genre: station.genre,
-    url: station.website || "https://example.com",
+    url: station.website || "https://pinoytambayanhub.com",
     logo: station.logo,
   };
 
-  const playInFloating = () => {
-    setStation(station, true); // set & play now
+  const handlePlayAction = () => {
+    if (isCurrent) {
+      setIsPlaying(!isPlaying);
+    } else {
+      // FIXED: Use setStation and cast station as Station type
+      setStation(station as Station, true);
+    }
     setShowUI(true);
   };
 
   return (
-    <section className="section">
+    <Layout title={`${station.name} - Live Radio`}>
+      <MetaHead 
+        title={`${station.name} — Listen Live | Pinoy Tambayan Hub`}
+        description={station.description || `Stream ${station.name} live online. Your daily OPM and FM tambayan.`}
+      />
+      
       <Head>
-        <title>{title}</title>
-        <meta name="description" content={desc} />
         <script
           type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </Head>
 
-      <div className="container-page max-w-6xl">
-        {/* Breadcrumb (scrollable on tiny screens) */}
-        <nav className="-mx-4 px-4 overflow-x-auto no-scrollbar text-sm text-gray-400 mb-3">
-          <Link href="/radio" className="hover:text-blue-400">
-            Radio
-          </Link>
-          <span className="mx-2">/</span>
-          <span className="text-gray-300 whitespace-nowrap">{station.name}</span>
+      <div className="max-w-6xl mx-auto">
+        {/* BREADCRUMB */}
+        <nav className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-8">
+          <Link href="/radio" className="hover:text-blue-500 transition-colors">Radio</Link>
+          <span>/</span>
+          <span className="text-slate-300">{station.name}</span>
         </nav>
 
-        {/* Header */}
-        <header className="flex flex-col md:flex-row items-start md:items-center gap-5 mb-6">
-          <img
-            src={station.logo}
-            alt={station.name}
-            loading="lazy"
-            className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-contain bg-gray-800 p-2 shrink-0"
-          />
+        <div className="grid lg:grid-cols-12 gap-12">
+          
+          {/* LEFT: PLAYER CARD */}
+          <div className="lg:col-span-7">
+            <div className="relative group rounded-[3rem] overflow-hidden bg-white/5 border border-white/10 p-8 md:p-12 shadow-2xl backdrop-blur-sm">
+              <div className="absolute -top-24 -right-24 w-64 h-64 bg-blue-600/20 blur-[100px] rounded-full" />
+              
+              <div className="relative z-10 flex flex-col items-center md:items-start md:flex-row gap-8">
+                <div className="w-40 h-40 md:w-52 md:h-52 shrink-0 bg-[#0f172a] rounded-[2.5rem] p-6 border border-white/5 shadow-inner flex items-center justify-center">
+                  <img src={station.logo} alt={station.name} className="w-full h-full object-contain filter drop-shadow-2xl" />
+                </div>
 
-          {/* min-w-0 so long names can truncate */}
-          <div className="flex-1 min-w-0">
-            <h1 className="page-title mb-0 truncate">{station.name}</h1>
+                <div className="flex-1 text-center md:text-left">
+                  <span className="text-blue-500 font-black uppercase tracking-[0.3em] text-[10px] bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
+                    Live Broadcast
+                  </span>
+                  <h1 className="text-4xl md:text-6xl font-black text-white italic uppercase tracking-tighter mt-4 mb-2">
+                    {station.name}
+                  </h1>
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">
+                    {station.genre || "Variety"} • {station.city || "Philippines"}
+                  </p>
 
-            <p className="text-gray-400 mt-1 truncate">
-              {station.genre ? `${station.genre} • ` : ""}
-              {station.city ?? ""}
-              {station.city && station.country ? ", " : ""}
-              {station.country ?? ""}
-            </p>
+                  <div className="mt-8 flex flex-wrap justify-center md:justify-start gap-4">
+                    <button 
+                      onClick={handlePlayAction}
+                      className="bg-white text-blue-950 px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-xl flex items-center gap-3"
+                    >
+                      {isCurrent && isPlaying ? (
+                         <div className="flex gap-1 items-end h-3">
+                           <div className="w-0.5 bg-blue-900 animate-[bounce_1s_infinite] h-full" />
+                           <div className="w-0.5 bg-blue-900 animate-[bounce_1.2s_infinite] h-2" />
+                           <div className="w-0.5 bg-blue-900 animate-[bounce_0.8s_infinite] h-3" />
+                         </div>
+                      ) : "▶"}
+                      {isCurrent && isPlaying ? "Pause Stream" : "Listen Now"}
+                    </button>
+                    {station.website && (
+                      <a href={station.website} target="_blank" rel="noopener noreferrer" className="bg-white/5 border border-white/10 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/10 transition-all">
+                        Official Site
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-            {station.website && (
-              <p className="mt-2">
-                <a
-                  href={station.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-400 hover:underline"
-                >
-                  Official Website ↗
-                </a>
-              </p>
-            )}
-
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={playInFloating}
-                className="btn btn-primary w-full sm:w-auto h-11"
-              >
-                ▶ Play in Floating Player
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* Content */}
-        <section className="grid md:grid-cols-3 gap-6">
-          {/* Main column */}
-          <div className="md:col-span-2 space-y-4">
-            {station.description && (
-              <div className="card">
-                <h3 className="text-lg font-semibold mb-2">
-                  About {station.name}
-                </h3>
-                <p className="text-gray-300 leading-relaxed">
-                  {station.description}
+              {/* DESCRIPTION BOX */}
+              <div className="mt-12 pt-12 border-t border-white/5">
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-300 mb-4">About the Station</h3>
+                <p className="text-slate-400 leading-relaxed font-medium italic">
+                  {station.description || "Pinoy Tambayan Hub brings you the best live streams from the Philippines and beyond."}
                 </p>
               </div>
-            )}
+            </div>
 
-            <div className="card bg-gray-900/70 border-blue-500/30">
-              <h3 className="text-lg font-semibold mb-2">Disclaimer</h3>
-              <p className="text-gray-300 text-sm leading-relaxed">
-                Pinoy Tambayan Hub is a directory that links to publicly
-                available radio streams or official players. We do not host or
-                claim ownership of the streams. If you own this station and wish
-                to update details or request removal, please contact us via the
-                Contact page.
-              </p>
+            {/* DISCLAIMER */}
+            <div className="mt-6 p-6 rounded-3xl bg-blue-500/5 border border-blue-500/10 text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-loose">
+              Notice: We do not host these streams. All content is provided by official broadcasters.
             </div>
           </div>
 
-          {/* Sidebar */}
-          <aside className="md:col-span-1 space-y-4">
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-3">Related Stations</h3>
-
-              {/* Tight grid on mobile, list on desktop */}
-              <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-1 gap-3">
-                {related.map((s) => (
-                  <li key={s.id} className="flex items-center gap-3 min-w-0 py-1.5">
-                    <img
-                      src={s.logo}
-                      alt={s.name}
-                      loading="lazy"
-                      className="w-10 h-10 rounded bg-gray-800 p-1 shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <Link
-                        href={`/stations/${s.id}`}
-                        className="text-sm text-gray-200 hover:text-blue-400 truncate"
-                      >
-                        {s.name}
-                      </Link>
-                      <div className="text-xs text-gray-500 truncate">
-                        {(s as StationEx).genre ?? "Radio"}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-                {!related.length && (
-                  <li className="text-sm text-gray-400">No related stations.</li>
-                )}
-              </ul>
+          {/* RIGHT: SIDEBAR */}
+          <div className="lg:col-span-5 space-y-8">
+            <h2 className="text-2xl font-black uppercase tracking-tighter italic text-white">Related Stations</h2>
+            <div className="grid grid-cols-1 gap-4">
+              {related.map((s) => (
+                <Link 
+                  key={s.id} 
+                  href={`/stations/${s.id}`}
+                  className="group flex items-center gap-4 bg-white/5 border border-white/5 p-4 rounded-3xl hover:bg-white/10 hover:border-blue-500/30 transition-all"
+                >
+                  <div className="w-16 h-16 shrink-0 bg-[#0f172a] rounded-2xl p-3 border border-white/5 flex items-center justify-center">
+                    <img src={s.logo} alt={s.name} className="w-full h-full object-contain group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-black text-white uppercase tracking-tight truncate">{s.name}</h4>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">{(s as any).genre || "Radio"}</p>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[10px] group-hover:bg-blue-600 transition-colors">
+                    →
+                  </div>
+                </Link>
+              ))}
             </div>
-
-            <div className="card text-center">
-              <div className="text-xs text-gray-500 mb-2">Advertisement</div>
-              <div className="bg-gray-800 rounded aspect-[16/9] sm:aspect-[1/1.25]" />
-            </div>
-          </aside>
-        </section>
-
-        {/* keep breathing room for floating player */}
-        <div className="page-bottom-spacer" />
+          </div>
+        </div>
       </div>
-    </section>
+    </Layout>
   );
 }
 
@@ -197,8 +177,7 @@ export async function getStaticPaths() {
 }
 
 export async function getStaticProps({ params }: { params: { id: string } }) {
-  const station =
-    (STATIONS as StationEx[]).find((s) => s.id === params.id) || null;
+  const station = STATIONS.find((s) => s.id === params.id) || null;
   if (!station) return { notFound: true };
   return { props: { station } };
 }

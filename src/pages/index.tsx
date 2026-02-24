@@ -1,30 +1,26 @@
-// src/pages/index.tsx
 "use client";
 
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import Head from "next/head";
-import { useEffect, useMemo, useState } from "react";
-import ChatBox from "../components/ChatBox";
-import { usePlayer } from "../context/PlayerContext";
-import { STATIONS } from "../data/stations";
-// at top with other imports
-import MetaHead from "../components/MetaHead";
-
-
-// 🔥 Firestore (adjust path if your db export lives elsewhere)
-import { db } from "../lib/firebase";
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  limit as fsLimit,
-  query,
-  type Timestamp,
+import { 
+  collection, 
+  onSnapshot, 
+  orderBy, 
+  limit as fsLimit, 
+  query, 
+  type Timestamp 
 } from "firebase/firestore";
+import { Play, Activity, ShoppingBag, MessageSquare, Newspaper, ArrowRight } from "lucide-react";
+
+import ChatBox from "../components/ChatBox";
+import { usePlayer, Station } from "../context/PlayerContext"; // Added Station type
+import { STATIONS } from "../data/stations";
+import MetaHead from "../components/MetaHead";
+import { db } from "../lib/firebase";
 
 /* ===================== helpers ===================== */
-const byId = (id: string) => STATIONS.find((s) => s.id === id);
+const byId = (id: string) => (STATIONS as Station[]).find((s) => s.id === id);
 
 function slugify(input: string) {
   return (input || "")
@@ -44,46 +40,27 @@ const peso = (n?: number | null) =>
 
 /* ===================== types ===================== */
 type Product = {
-  id: string;
-  title: string;
-  slug?: string | null;
-  category?: string | null;
-  pricePhp?: number | null;
-  store?: string | null;
-  imageUrl: string;
-  affiliateUrl: string;
-  blurb?: string | null;
-  ownerName?: string | null;
+  id: string; title: string; slug?: string | null; category?: string | null;
+  pricePhp?: number | null; store?: string | null; imageUrl: string;
+  affiliateUrl: string; blurb?: string | null; ownerName?: string | null;
   createdAt?: Timestamp | { seconds?: number } | null;
 };
 
 type Story = {
-  id: string;
-  title: string;
-  slug?: string | null;
+  id: string; title: string; slug?: string | null;
   createdAt?: Timestamp | { seconds?: number } | null;
 };
 
-/* ===================== featured lists ===================== */
-const FEATURED_IDS = [
-  "love-radio",
-  "easy-rock",
-  "barangay-ls",
-  "energy-fm",
-  "star-fm",
-  "win-radio",
-  "home-radio",
-  "mor-entertainment",
-];
+const FEATURED_IDS = ["love-radio", "easy-rock", "barangay-ls", "energy-fm", "star-fm", "win-radio", "home-radio", "mor-entertainment"];
 
 export default function Home() {
-  const { setShowUI } = usePlayer();
-
+  // FIXED: Changed playStation to setStation to match the Context
+  const { currentStation, setStation, isPlaying, setShowUI } = usePlayer();
   const [products, setProducts] = useState<Product[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
 
+  // Real-time Firestore Sync
   useEffect(() => {
-    // latest 6 marketplace products
     const pq = query(collection(db, "products"), orderBy("createdAt", "desc"), fsLimit(6));
     const unsubP = onSnapshot(pq, (snap) => {
       const arr: Product[] = [];
@@ -91,7 +68,6 @@ export default function Home() {
       setProducts(arr);
     });
 
-    // latest 4 stories
     const sq = query(collection(db, "stories"), orderBy("createdAt", "desc"), fsLimit(4));
     const unsubS = onSnapshot(sq, (snap) => {
       const arr: Story[] = [];
@@ -99,345 +75,189 @@ export default function Home() {
       setStories(arr);
     });
 
-    return () => {
-      unsubP();
-      unsubS();
-    };
+    return () => { unsubP(); unsubS(); };
   }, []);
 
-  const productCards = useMemo(
-    () =>
-      products.map((p) => {
-        const pretty = p.slug && p.slug.length ? p.slug : slugify(p.title);
-        return {
-          ...p,
-          href: `/marketplace/p/${p.id}-${pretty}`,
-        };
-      }),
-    [products]
-  );
-
-  const storyLinks = useMemo(
-    () =>
-      stories.map((s) => ({
-        ...s,
-        href: `/stories/${s.slug && s.slug.length ? s.slug : s.id}`,
-      })),
-    [stories]
-  );
-
   return (
-    <>
-      {/* SEO */}
-      {/* replace the whole <Head>…</Head> block with this */}
-<MetaHead
-  title="Pinoy Tambayan Hub — OPM Radio, Weather, Events & News"
-  description="Listen to Pinoy radio online, check PH weather, browse events and stories, shop community marketplace picks, and hang out with the tambayan."
-  image="/brand/og-cover.png"
-/>
+    <div className="space-y-24 pb-12">
+      <MetaHead
+        title="Pinoy Tambayan Hub — OPM Radio, Weather & News"
+        description="Listen to Pinoy radio online, check PH weather, browse events and stories."
+      />
 
-{/* keep your SearchAction JSON-LD (nice touch!) */}
-<script
-  type="application/ld+json"
-  dangerouslySetInnerHTML={{
-    __html: JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      name: "Pinoy Tambayan Hub",
-      url: "https://pinoytambayanhub.com/",
-      potentialAction: {
-        "@type": "SearchAction",
-        target: "https://pinoytambayanhub.com/radio?q={search_term_string}",
-        "query-input": "required name=search_term_string",
-      },
-    }),
-  }}
-/>
-
-
-      {/* HERO */}
-      <section className="section bg-darkbg text-lighttext scroll-mt-24 md:scroll-mt-28">
-        <div className="container-page">
-          <div className="grid md:grid-cols-2 gap-8 items-center">
-            <div>
-              <h1 className="page-title text-blue-400">Welcome to Pinoy Tambayan Hub</h1>
-              <p className="mt-3 text-[15px] sm:text-base text-gray-300 max-w-prose">
-                Your daily dose of OPM hits, live radio, tambayan stories, and community marketplace picks.
-              </p>
-              <div className="mt-5 flex gap-3 flex-wrap">
-                <Link
-                  href="/radio"
-                  onClick={() => setShowUI(true)}
-                  prefetch={false}
-                  className="btn btn-primary px-5 py-3 text-sm sm:text-base"
-                >
-                  Start Listening
-                </Link>
-                <Link href="/marketplace" prefetch={false} className="btn btn-ghost px-5 py-3 text-sm sm:text-base">
-                  Shop Picks
-                </Link>
-              </div>
-            </div>
-
-            {/* Quick links / cards */}
-            <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <Link href="/stories" className="card card-hover">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-gradient-to-tr from-blue-500 to-cyan-400">
-                    <span className="text-white text-xl">📖</span>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Stories</h3>
-                    <p className="text-sm text-gray-400">Drama • Romance • One-shots</p>
-                  </div>
-                </div>
-              </Link>
-
-              <Link href="/events" className="card card-hover">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-gradient-to-tr from-pink-500 to-purple-500">
-                    <span className="text-white text-xl">📅</span>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Events</h3>
-                    <p className="text-sm text-gray-400">Concerts & meetups</p>
-                  </div>
-                </div>
-              </Link>
-
-              <Link href="/radio" onClick={() => setShowUI(true)} className="card card-hover">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-gradient-to-tr from-green-500 to-emerald-400">
-                    <span className="text-white text-xl">📻</span>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Live Radio</h3>
-                    <p className="text-sm text-gray-400">Pinoy stations</p>
-                  </div>
-                </div>
-              </Link>
-
-              <Link href="/news" className="card card-hover">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-gradient-to-tr from-orange-500 to-yellow-400">
-                    <span className="text-white text-xl">🗞️</span>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Latest News</h3>
-                    <p className="text-sm text-gray-400">Headlines & updates</p>
-                  </div>
-                </div>
-              </Link>
-            </div>
+      {/* 🚀 PREMIUM HERO SECTION */}
+      <section className="relative rounded-[3rem] overflow-hidden bg-slate-900 border border-white/5 shadow-2xl">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-transparent to-indigo-900/40" />
+        <div className="relative z-10 p-8 md:p-20 flex flex-col items-start max-w-4xl">
+          <div className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 text-[10px] font-black uppercase tracking-[0.3em] px-4 py-2 rounded-full border border-blue-500/20 mb-8 animate-in fade-in slide-in-from-left-4 duration-700">
+            <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            Live from the Philippines
           </div>
-        </div>
-      </section>
+          
+          <h1 className="text-6xl md:text-8xl font-black text-white leading-[0.85] tracking-tighter italic uppercase mb-8">
+            Ang Tunay na <br /> 
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-white to-indigo-400">
+              Tambayan.
+            </span>
+          </h1>
+          
+          <p className="text-slate-400 text-lg md:text-xl font-medium max-w-md mb-10 leading-relaxed">
+            Stream your favorite OPM hits, stay updated with PH news, and hang out with the community.
+          </p>
 
-      {/* FEATURED STATIONS */}
-      <section className="section">
-        <div className="container-page">
-          <h2 className="page-title mb-3">Featured Stations</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {FEATURED_IDS.map((id) => {
-              const s = byId(id);
-              if (!s) return null;
-              return (
-                <Link
-                  key={s.id}
-                  href={`/stations/${s.id}`}
-                  className="rounded-lg bg-gray-800/70 px-4 py-3 border border-white/10 hover:bg-gray-800 transition flex items-center gap-3"
-                  onClick={() => setShowUI(true)}
-                >
-                  {s.logo ? (
-                    <Image
-                      src={s.logo}
-                      alt={s.name}
-                      width={36}
-                      height={36}
-                      className="w-9 h-9 rounded-md object-contain bg-black/10"
-                    />
-                  ) : (
-                    <div className="w-9 h-9 rounded-md bg-gray-700 grid place-items-center text-[10px] text-gray-300">
-                      LOGO
-                    </div>
-                  )}
-                  <span className="font-medium leading-tight">{s.name}</span>
-                </Link>
-              );
-            })}
-          </div>
-          <div className="mt-3">
-            <Link href="/radio" onClick={() => setShowUI(true)} className="text-blue-400 hover:underline">
-              Browse all stations →
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* FEATURED MARKETPLACE */}
-      <section className="section">
-        <div className="container-page">
-          <div className="flex items-baseline justify-between gap-2 mb-3">
-            <h2 className="page-title mb-0">Featured Marketplace</h2>
-            <Link href="/marketplace" className="text-blue-400 hover:underline">
-              See all →
-            </Link>
-          </div>
-
-          {productCards.length === 0 ? (
-            <div className="card text-center text-neutral-300">No products yet. Be the first to post!</div>
-          ) : (
-            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {productCards.map((p) => (
-                <li key={p.id} className="card card-hover">
-                  <Link href={p.href} className="block" aria-label={`${p.title} – details`}>
-                    {p.imageUrl && (
-                      <div className="mb-3 overflow-hidden rounded-md">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={p.imageUrl}
-                          alt={p.title}
-                          className="aspect-[16/10] w-full object-cover"
-                          loading="lazy"
-                        />
-                      </div>
-                    )}
-                    <h3 className="text-base font-semibold leading-snug line-clamp-2">{p.title}</h3>
-                  </Link>
-
-                  <div className="mt-2 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-300">
-                      <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs">
-                        {p.category || "Others"}
-                      </span>
-                      {p.store && <span className="text-xs text-neutral-400">via {p.store}</span>}
-                    </div>
-                    {p.blurb && <p className="text-sm text-neutral-300 line-clamp-2">{p.blurb}</p>}
-                    <div className="mt-1 flex items-center justify-between">
-                      <div className="text-lg font-semibold">{peso(p.pricePhp ?? undefined)}</div>
-                      <a
-                        href={(p as any).affiliateUrl}
-                        rel="nofollow sponsored noopener"
-                        target="_blank"
-                        className="text-xs text-blue-400 underline-offset-4"
-                      >
-                        Check price →
-                      </a>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
-
-      {/* LATEST STORIES */}
-      <section className="section">
-        <div className="container-page">
-          <div className="flex items-baseline justify-between gap-2 mb-3">
-            <h2 className="page-title mb-0">Latest Stories</h2>
-            <Link href="/stories" className="text-blue-400 hover:underline">
-              Browse stories →
-            </Link>
-          </div>
-
-          {storyLinks.length === 0 ? (
-            <div className="card text-center text-neutral-300">No stories yet. Write the first one!</div>
-          ) : (
-            <ul className="grid sm:grid-cols-2 gap-3">
-              {storyLinks.map((s) => (
-                <li key={s.id} className="card card-hover p-4">
-                  <h3 className="font-semibold">
-                    <Link href={s.href} className="hover:underline">
-                      {s.title}
-                    </Link>
-                  </h3>
-                  <p className="mt-1 text-xs text-gray-400">New on the tambayan</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
-
-      {/* QUICK WEATHER TEASER */}
-      <section className="section">
-        <div className="container-page">
-          <div className="rounded-xl bg-gray-800/70 p-5 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="text-3xl">🌤️</div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Weather at a glance</h3>
-              <p className="text-gray-300 text-sm">See today’s forecast and alerts for your area.</p>
-            </div>
-            <Link href="/weather" className="btn btn-primary">
-              Open Weather
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* COMMUNITY CHAT */}
-      <section className="section pb-24">
-        <div className="container-page">
-          <h2 className="page-title mb-3">Community Chat</h2>
-          <div className="mx-auto w-full max-w-3xl min-h-0">
-            <ChatBox />
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="section">
-        <div className="container-page">
-          <h2 className="page-title mb-3">FAQ</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <details className="rounded-lg bg-gray-800/60 border border-white/10 p-4">
-              <summary className="cursor-pointer font-semibold">Is Pinoy Tambayan Hub free?</summary>
-              <p className="mt-2 text-gray-300 text-sm">
-                Yes — listening and chatting are free. Some features may be supported by ads.
-              </p>
-            </details>
-            <details className="rounded-lg bg-gray-800/60 border border-white/10 p-4">
-              <summary className="cursor-pointer font-semibold">Do I need an account?</summary>
-              <p className="mt-2 text-gray-300 text-sm">
-                You can listen without an account. Sign in to personalize your profile and chat with an avatar.
-              </p>
-            </details>
-            <details className="rounded-lg bg-gray-800/60 border border-white/10 p-4">
-              <summary className="cursor-pointer font-semibold">How do I request a station?</summary>
-              <p className="mt-2 text-gray-300 text-sm">
-                Ping us via the Contact page — we’ll try to add it asap if it’s available online.
-              </p>
-            </details>
-            <details className="rounded-lg bg-gray-800/60 border border-white/10 p-4">
-              <summary className="cursor-pointer font-semibold">Can I report issues?</summary>
-              <p className="mt-2 text-gray-300 text-sm">Yes! Use the Contact page to report broken streams or bugs.</p>
-            </details>
-          </div>
-        </div>
-      </section>
-
-      {/* NEWSLETTER */}
-      <section className="section">
-        <div className="container-page">
-          <div className="rounded-xl bg-gray-800/70 p-6 border border-white/10">
-            <h3 className="text-lg font-semibold">Get updates</h3>
-            <p className="text-gray-300 text-sm">Be the first to know about new stations and features.</p>
-            <form
-              action="https://formspree.io/f/your-form-id"
-              method="POST"
-              className="mt-3 flex flex-col sm:flex-row gap-2"
+          <div className="flex flex-wrap gap-4">
+            <button 
+              // FIXED: Changed playStation to setStation
+              onClick={() => setStation(STATIONS[0] as Station, true)}
+              className="bg-blue-600 hover:bg-blue-500 text-white px-10 py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-blue-600/20 active:scale-95 flex items-center gap-3"
             >
-              <input type="email" name="email" required placeholder="you@email.com" className="input" />
-              <button type="submit" className="btn btn-primary">
-                Subscribe
-              </button>
-            </form>
-            <p className="mt-2 text-xs text-gray-400">We respect your privacy. Unsubscribe anytime.</p>
+              <Play size={16} fill="currentColor" /> Listen Live
+            </button>
+            <Link href="/marketplace" className="bg-white/5 backdrop-blur-md border border-white/10 text-white px-10 py-5 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/10 transition-all">
+              Browse Market
+            </Link>
           </div>
         </div>
+
+        <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-blue-600/10 to-transparent pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-indigo-600/20 rounded-full blur-[120px]" />
       </section>
-    </>
+
+      {/* 📻 FEATURED RADIO GRID */}
+      <section>
+        <div className="flex items-end justify-between mb-10 px-2">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-1 w-8 bg-blue-600 rounded-full" />
+              <span className="text-blue-500 text-[10px] font-black uppercase tracking-[0.2em]">Live Stations</span>
+            </div>
+            <h2 className="text-4xl font-black uppercase tracking-tighter italic text-white">Featured Radio</h2>
+          </div>
+          <Link href="/radio" className="flex items-center gap-2 text-slate-500 hover:text-white text-[10px] font-black uppercase tracking-widest transition-colors group">
+            View All <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {FEATURED_IDS.map((id) => {
+            const s = byId(id);
+            if (!s) return null;
+            const isActive = currentStation?.id === s.id && isPlaying;
+
+            return (
+              <button 
+                key={s.id} 
+                // FIXED: Changed playStation to setStation
+                onClick={() => setStation(s as Station, true)}
+                className={`group relative overflow-hidden rounded-[2rem] p-6 transition-all border ${
+                  isActive 
+                  ? "bg-blue-600/10 border-blue-500/50 shadow-lg shadow-blue-500/10" 
+                  : "bg-slate-900/40 border-white/5 hover:bg-slate-900/80 hover:border-white/20"
+                }`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="relative w-14 h-14 flex-shrink-0 bg-slate-800 rounded-2xl overflow-hidden p-2">
+                    <Image 
+                      src={s.logo || ''} 
+                      alt={s.name} 
+                      fill 
+                      className={`object-contain transition-transform duration-500 group-hover:scale-110 ${isActive ? 'animate-pulse' : ''}`} 
+                    />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <p className="font-black text-white text-sm tracking-tight leading-tight truncate uppercase italic">
+                      {s.name}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      {isActive ? (
+                        <span className="text-blue-400 text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
+                          <Activity size={10} /> Playing
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 text-[8px] font-black uppercase tracking-widest">Station</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 🛒 MARKETPLACE & CHAT SPLIT */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+        <section className="lg:col-span-8">
+          <div className="flex items-center justify-between mb-8 px-2">
+            <h2 className="text-3xl font-black uppercase tracking-tighter italic text-white flex items-center gap-3">
+              <ShoppingBag className="text-blue-500" /> Community Picks
+            </h2>
+            <Link href="/marketplace" className="text-blue-500 text-[10px] font-black uppercase tracking-widest hover:underline">Shop All</Link>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {products.map((p) => (
+              <div key={p.id} className="group bg-slate-900/40 border border-white/5 rounded-[2.5rem] overflow-hidden hover:border-blue-500/30 transition-all shadow-xl">
+                <Link href={`/marketplace/p/${p.id}-${p.slug || slugify(p.title)}`} className="block relative aspect-[16/10] overflow-hidden">
+                  <img src={p.imageUrl} alt={p.title} className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" />
+                  <div className="absolute top-5 left-5 bg-blue-600 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest text-white shadow-xl">
+                    {p.category || "Hot Pick"}
+                  </div>
+                </Link>
+                <div className="p-8">
+                  <h3 className="text-xl font-bold text-white leading-tight line-clamp-1 group-hover:text-blue-400 transition-colors">{p.title}</h3>
+                  <div className="flex items-center justify-between mt-6">
+                    <div>
+                      <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest mb-1">Price</p>
+                      <span className="text-2xl font-black text-white">{peso(p.pricePhp ?? undefined)}</span>
+                    </div>
+                    <a href={p.affiliateUrl} target="_blank" rel="noopener noreferrer" className="bg-white/5 hover:bg-blue-600 text-white p-4 rounded-2xl transition-all border border-white/10 group-hover:border-blue-500">
+                      <ShoppingBag size={20} />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* CHAT SIDEBAR */}
+        <section className="lg:col-span-4 space-y-8">
+            <div className="sticky top-32">
+              <div className="flex items-center gap-3 mb-8 px-2">
+                <MessageSquare className="text-blue-500" />
+                <h2 className="text-3xl font-black uppercase tracking-tighter italic text-white">Chat</h2>
+              </div>
+              <div className="bg-slate-900/60 backdrop-blur-xl rounded-[2.5rem] border border-white/10 p-2 shadow-2xl h-[600px] flex flex-col">
+                <ChatBox />
+              </div>
+              <p className="text-center text-slate-500 text-[10px] font-black uppercase tracking-widest mt-4">Be kind to one another.</p>
+            </div>
+        </section>
+      </div>
+
+      {/* 📰 COMMUNITY STORIES */}
+      <section className="bg-blue-600 rounded-[3rem] p-8 md:p-16 overflow-hidden relative group mb-12">
+        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
+          <div className="max-w-md">
+            <h2 className="text-5xl font-black text-white tracking-tighter uppercase italic leading-none mb-4">Community <br />Stories</h2>
+            <p className="text-blue-100 font-medium mb-8">Stay connected with the latest events and updates from our community.</p>
+            <Link href="/stories" className="inline-flex items-center gap-3 bg-white text-blue-600 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl">
+              Read More <Newspaper size={16} />
+            </Link>
+          </div>
+
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {stories.map((s) => (
+              <Link key={s.id} href={`/stories/${s.slug || s.id}`} className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-3xl hover:bg-white/20 transition-all group/card">
+                <h4 className="text-white font-bold text-lg leading-tight mb-2 group-hover/card:underline">{s.title}</h4>
+                <p className="text-blue-100/60 text-[10px] font-black uppercase tracking-widest italic">Story Update</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-32 -mt-32" />
+      </section>
+    </div>
   );
 }

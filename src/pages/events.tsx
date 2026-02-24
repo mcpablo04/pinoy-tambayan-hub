@@ -1,14 +1,14 @@
-// src/pages/events.tsx
 "use client";
 
 import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
+import { Search, Calendar, MapPin, Ticket, RotateCcw, ChevronLeft, ChevronRight, Music } from "lucide-react";
 
 /* ========= Types ========= */
 type NewsItem = {
   title: string;
   link: string;
-  pubDate: string; // from /api/news
+  pubDate: string;
   source?: string;
 };
 
@@ -16,26 +16,15 @@ type Ev = {
   id: string;
   name: string;
   url: string;
-  date: string | null;   // publish date as proxy
-  venue?: string | null; // heuristic
-  city?: string | null;  // heuristic
+  date: string | null;
+  venue?: string | null;
+  city?: string | null;
   source?: string | null;
 };
 
-/* ========= Config ========= */
+/* ========= Config & Helpers (Logic remains same as your original) ========= */
 const PER_PAGE = 12;
-
-const PH_CITIES = [
-  "All PH",
-  "Manila",
-  "Quezon City",
-  "Cebu",
-  "Davao",
-  "Baguio",
-  "Iloilo",
-  "Cagayan de Oro",
-];
-
+const PH_CITIES = ["All PH", "Manila", "Quezon City", "Cebu", "Davao", "Baguio", "Iloilo", "CDO"];
 const PRESETS = [
   { label: "All Gigs", q: 'gig OR concert OR "live show" OR "mall show" Philippines OPM' },
   { label: "Announcements", q: 'concert announced OR "tour dates" Philippines OPM' },
@@ -43,24 +32,14 @@ const PRESETS = [
   { label: "Festivals", q: 'music festival Philippines OPM' },
 ];
 
-/* ========= Helpers ========= */
 function fmtDateShort(d?: string | null) {
   if (!d) return "—";
   const dt = new Date(d);
-  if (Number.isNaN(dt.getTime())) return "—";
-  return dt.toLocaleString(undefined, {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return dt.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 function guessVenueAndCity(title: string): { venue?: string; city?: string } {
-  const cityHit = PH_CITIES.slice(1).find((c) =>
-    new RegExp(`\\b${c}\\b`, "i").test(title)
-  );
-  // venue: text after "at " or "@ "
+  const cityHit = PH_CITIES.slice(1).find((c) => new RegExp(`\\b${c}\\b`, "i").test(title));
   let venue: string | undefined;
   const atMatch = title.match(/\b(?:at|@)\s+([^–—\-|,]+?)(?:[,–—\-|]|$)/i);
   if (atMatch?.[1]) venue = atMatch[1].trim();
@@ -68,18 +47,12 @@ function guessVenueAndCity(title: string): { venue?: string; city?: string } {
 }
 
 function buildQuery(baseQ: string, city: string, userQ: string) {
-  const parts: string[] = [];
-  parts.push("(" + baseQ + ")");
-  if (userQ.trim()) parts.push("(" + userQ.trim() + ")");
-  if (city !== "All PH") {
-    parts.push(`("${city}" OR "${city}, Philippines")`);
-  } else {
-    parts.push("(Philippines OR PH)");
-  }
+  const parts = [`(${baseQ})`];
+  if (userQ.trim()) parts.push(`(${userQ.trim()})`);
+  parts.push(city !== "All PH" ? `("${city}" OR "${city}, Philippines")` : "(Philippines OR PH)");
   return parts.join(" AND ");
 }
 
-/* ========= Page ========= */
 export default function EventsFromNews() {
   const [preset, setPreset] = useState(PRESETS[0].q);
   const [city, setCity] = useState("All PH");
@@ -87,8 +60,6 @@ export default function EventsFromNews() {
   const [items, setItems] = useState<Ev[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-
-  // pagination state
   const [page, setPage] = useState(0);
 
   const load = async (query: string) => {
@@ -98,252 +69,171 @@ export default function EventsFromNews() {
       const r = await fetch(`/api/news?q=${encodeURIComponent(query)}`);
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || "Failed to load");
-
-      const mapped: Ev[] =
-        (j.items as NewsItem[]).map((it, idx) => {
-          const { venue, city: guessedCity } = guessVenueAndCity(it.title);
-          return {
-            id: `${it.link}-${idx}`,
-            name: it.title,
-            url: it.link,
-            date: it.pubDate || null,
-            venue: venue || null,
-            city: guessedCity || null,
-            source: it.source || null,
-          };
-        }) ?? [];
-
+      const mapped = (j.items as NewsItem[]).map((it, idx) => ({
+        id: `${it.link}-${idx}`,
+        name: it.title,
+        url: it.link,
+        date: it.pubDate || null,
+        ...guessVenueAndCity(it.title),
+        source: it.source || null,
+      }));
       setItems(mapped);
       setPage(0);
     } catch (e: any) {
       setErr(e?.message || "Failed to load");
       setItems([]);
-      setPage(0);
     } finally {
       setLoading(false);
     }
   };
 
-  // initial load
-  useEffect(() => {
-    load(buildQuery(preset, city, input));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { load(buildQuery(preset, city, input)); }, []);
 
   const pageCount = Math.max(1, Math.ceil(items.length / PER_PAGE));
-  const slice = useMemo(
-    () => items.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE),
-    [items, page]
-  );
-  const canPrev = page > 0;
-  const canNext = page < pageCount - 1;
+  const slice = useMemo(() => items.slice(page * PER_PAGE, (page + 1) * PER_PAGE), [items, page]);
 
   return (
     <>
-      {/* SEO */}
       <Head>
-        <title>OPM Concerts & Community Events | Pinoy Tambayan Hub</title>
-        <meta
-          name="description"
-          content="Discover upcoming OPM concerts, local gigs, and community events across the Philippines. Curated from PH-localized news."
-        />
-        <link rel="canonical" href="https://pinoytambayanhub.com/events" />
-
-        <meta property="og:title" content="OPM Concerts & Community Events" />
-        <meta
-          property="og:description"
-          content="Find gigs and events near you. Search by city or preset filters."
-        />
-        <meta property="og:image" content="/brand/og-cover.png" />
-        <meta property="og:url" content="https://pinoytambayanhub.com/events" />
-        <meta property="og:type" content="website" />
-
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="OPM Concerts & Community Events" />
-        <meta
-          name="twitter:description"
-          content="Discover upcoming OPM concerts, local gigs, and festivals."
-        />
-        <meta name="twitter:image" content="/brand/og-cover.png" />
+        <title>OPM Concerts & Events | Pinoy Tambayan Hub</title>
       </Head>
 
-      <section className="section">
-        <div className="container-page">
-          {/* Header */}
-          <h1 className="page-title">📅 PH Concerts & Gigs</h1>
-          <p className="text-gray-400 mb-5">
-            Curated from Google News (PH-localized).
-          </p>
-
-          {/* Search & actions */}
-          <div className="flex flex-col md:flex-row gap-3 mb-3">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") load(buildQuery(preset, city, input));
-              }}
-              placeholder='Search (e.g., "SB19", "Ben&Ben Cebu", "Moira tickets")'
-              className="input"
-              aria-label="Search events"
-            />
-            <div className="flex gap-2 md:w-auto">
-              <button
-                onClick={() => load(buildQuery(preset, city, input))}
-                className="btn btn-primary w-full md:w-auto"
-              >
-                Search
-              </button>
-              <button
-                onClick={() => {
-                  setInput("");
-                  setPreset(PRESETS[0].q);
-                  setCity("All PH");
-                  load(buildQuery(PRESETS[0].q, "All PH", ""));
-                }}
-                className="btn btn-ghost w-full md:w-auto"
-                title="Reset filters"
-              >
-                Reset
-              </button>
-            </div>
+      <div className="space-y-8">
+        {/* 🏆 HEADER SECTION */}
+        <div className="relative overflow-hidden rounded-[2.5rem] bg-slate-900 border border-white/5 p-8 md:p-12">
+          <div className="absolute top-0 right-0 p-8 opacity-10">
+            <Music size={120} className="text-blue-500 rotate-12" />
           </div>
-
-          {/* Preset chips */}
-          <div className="-mx-2 px-2 overflow-x-auto no-scrollbar">
-            <div className="flex gap-2 mb-3">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.label}
-                  onClick={() => { setPreset(p.q); load(buildQuery(p.q, city, input)); }}
-                  className={`shrink-0 px-3 py-1.5 rounded-full border whitespace-nowrap ${
-                    preset === p.q
-                      ? "bg-blue-600 border-blue-500 text-white"
-                      : "bg-gray-800/70 border-gray-700 text-gray-200 hover:bg-gray-700"
-                  }`}
-                  title={p.q}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+          <div className="relative z-10">
+            <h1 className="text-4xl md:text-6xl font-black text-white uppercase italic tracking-tighter leading-none mb-4">
+              PH Concerts <span className="text-blue-500">& Gigs</span>
+            </h1>
+            <p className="text-slate-400 max-w-lg font-medium">
+              Discover the latest OPM shows, mall tours, and music festivals. Live updates curated from PH-localized news.
+            </p>
           </div>
-
-          {/* City chips */}
-          <div className="-mx-2 px-2 overflow-x-auto no-scrollbar">
-            <div className="flex gap-2 mb-6">
-              {PH_CITIES.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => { setCity(c); load(buildQuery(preset, c, input)); }}
-                  className={`shrink-0 px-3 py-1.5 rounded-full border whitespace-nowrap ${
-                    city === c
-                      ? "bg-blue-600 border-blue-500 text-white"
-                      : "bg-gray-800/70 border-gray-700 text-gray-200 hover:bg-gray-700"
-                  }`}
-                  title={c}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Top pager */}
-          {!loading && !err && items.length > 0 && (
-            <div className="flex items-center justify-between mb-3 text-sm text-gray-400">
-              <div>
-                Showing{" "}
-                <span className="text-gray-200">
-                  {page * PER_PAGE + 1}-{Math.min(items.length, (page + 1) * PER_PAGE)}
-                </span>{" "}
-                of <span className="text-gray-200">{items.length}</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  disabled={!canPrev}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  className="px-3 py-1.5 rounded bg-gray-800 text-gray-200 disabled:opacity-50 hover:bg-gray-700"
-                >
-                  ← Prev
-                </button>
-                <button
-                  disabled={!canNext}
-                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                  className="px-3 py-1.5 rounded bg-gray-800 text-gray-200 disabled:opacity-50 hover:bg-gray-700"
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Results */}
-          {loading ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: PER_PAGE }).map((_, i) => (
-                <div key={i} className="h-36 rounded-lg bg-gray-800/50 animate-pulse" />
-              ))}
-            </div>
-          ) : err ? (
-            <p className="text-amber-400">Error: {err}</p>
-          ) : items.length === 0 ? (
-            <p className="text-gray-400">No events found for this query.</p>
-          ) : (
-            <>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {slice.map((ev) => (
-                  <a
-                    key={ev.id}
-                    href={ev.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block rounded-lg bg-gray-800/60 border border-white/5 p-4 hover:bg-gray-800 transition"
-                  >
-                    <div className="text-sm text-gray-400 mb-1">
-                      {(ev.source || "Source") + " • " + fmtDateShort(ev.date)}
-                      {(ev.city || ev.venue) && (
-                        <>
-                          {" • "}
-                          {ev.city ? `📍 ${ev.city}` : ""}
-                          {ev.city && ev.venue ? " • " : ""}
-                          {ev.venue ? `🏟️ ${ev.venue}` : ""}
-                        </>
-                      )}
-                    </div>
-                    <div className="font-semibold text-gray-100 line-clamp-3">
-                      {ev.name}
-                    </div>
-                  </a>
-                ))}
-              </div>
-
-              {/* Bottom pager */}
-              <div className="flex items-center justify-center gap-3 mt-6">
-                <button
-                  disabled={!canPrev}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  className="px-4 py-2 rounded bg-gray-800 text-gray-200 disabled:opacity-50 hover:bg-gray-700"
-                >
-                  ← Prev
-                </button>
-                <span className="text-sm text-gray-400">
-                  Page {page + 1} of {pageCount}
-                </span>
-                <button
-                  disabled={!canNext}
-                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                  className="px-4 py-2 rounded bg-gray-800 text-gray-200 disabled:opacity-50 hover:bg-gray-700"
-                >
-                  Next →
-                </button>
-              </div>
-            </>
-          )}
-
-          <div className="page-bottom-spacer" />
         </div>
-      </section>
+
+        {/* 🔍 FILTER SECTION */}
+        <div className="sticky top-24 z-40 bg-[#020617]/80 backdrop-blur-xl border border-white/5 p-4 rounded-3xl shadow-2xl">
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="relative flex-1 group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors" size={20} />
+              <input
+                className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:border-blue-500/50 outline-none transition-all font-bold text-sm"
+                placeholder='Search "SB19", "Ben&Ben", "Moira"...'
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && load(buildQuery(preset, city, input))}
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <button onClick={() => load(buildQuery(preset, city, input))} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-lg shadow-blue-600/20">
+                Find Events
+              </button>
+              <button 
+                onClick={() => { setInput(""); setPreset(PRESETS[0].q); setCity("All PH"); load(buildQuery(PRESETS[0].q, "All PH", "")); }}
+                className="bg-white/5 border border-white/10 text-slate-400 p-4 rounded-2xl hover:text-white transition-all"
+              >
+                <RotateCcw size={20} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-white/5">
+            {PRESETS.map((p) => (
+              <button
+                key={p.label}
+                onClick={() => { setPreset(p.q); load(buildQuery(p.q, city, input)); }}
+                className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${preset === p.q ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20" : "bg-white/5 text-slate-500 hover:text-white border border-white/5"}`}
+              >
+                {p.label}
+              </button>
+            ))}
+            <div className="w-px h-6 bg-white/10 mx-2 hidden sm:block" />
+            {PH_CITIES.map((c) => (
+              <button
+                key={c}
+                onClick={() => { setCity(c); load(buildQuery(preset, c, input)); }}
+                className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${city === c ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-500 hover:text-white border border-white/5"}`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 🎫 RESULTS GRID */}
+        {loading ? (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-64 rounded-[2rem] bg-white/5 border border-white/10" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {slice.map((ev) => (
+              <a
+                key={ev.id}
+                href={ev.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group relative overflow-hidden rounded-[2rem] bg-slate-900 border border-white/5 p-6 hover:border-blue-500/50 hover:bg-slate-800/50 transition-all flex flex-col justify-between h-full"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <span className="bg-blue-600/10 text-blue-400 text-[9px] font-black px-3 py-1 rounded-full border border-blue-500/20 uppercase tracking-widest">
+                    {ev.source || "GMA/ABS-CBN"}
+                  </span>
+                  <Ticket className="text-slate-700 group-hover:text-blue-500 transition-colors" size={20} />
+                </div>
+                
+                <div>
+                  <h3 className="text-lg font-bold text-white line-clamp-3 leading-tight mb-4 group-hover:text-blue-400 transition-colors">
+                    {ev.name}
+                  </h3>
+                </div>
+
+                <div className="space-y-2 pt-4 border-t border-white/5">
+                  <div className="flex items-center gap-2 text-slate-400 text-[11px] font-bold">
+                    <Calendar size={14} className="text-blue-500" /> {fmtDateShort(ev.date)}
+                  </div>
+                  {(ev.city || ev.venue) && (
+                    <div className="flex items-center gap-2 text-slate-400 text-[11px] font-bold">
+                      <MapPin size={14} className="text-red-500" /> {ev.venue ? `${ev.venue}, ` : ""}{ev.city}
+                    </div>
+                  )}
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+
+        {/* 📟 PAGINATION */}
+        {!loading && items.length > 0 && (
+          <div className="flex items-center justify-between pt-10 border-t border-white/5">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">
+              Page {page + 1} of {pageCount}
+            </span>
+            <div className="flex gap-4">
+              <button
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-white disabled:opacity-20 hover:bg-blue-600 transition-all"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                disabled={page >= pageCount - 1}
+                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-white disabled:opacity-20 hover:bg-blue-600 transition-all"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 }

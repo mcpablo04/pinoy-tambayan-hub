@@ -1,152 +1,158 @@
-// src/pages/terms.tsx
-import Head from "next/head";
 import Link from "next/link";
+import MetaHead from "../components/MetaHead";
+import { Scale, ShieldAlert, Users, Fingerprint, Copyright, Info, Radio } from "lucide-react";
 
-const SITE_URL = "https://pinoytambayanhub.com"; // update if different
-const LAST_UPDATED = "March 2025";
+const LAST_UPDATED = "February 2026";
 
 export default function TermsPage() {
-  const canonical = `${SITE_URL}/terms`;
-  const metaTitle = "Terms of Service | Pinoy Tambayan Hub";
-  const metaDesc =
-    "Read the Terms of Service for Pinoy Tambayan Hub, including rules for user content, community guidelines, accounts, and liability.";
+  const sections = [
+    {
+      id: 1,
+      title: "Using the Hub",
+      icon: Info,
+      content: "By accessing Pinoy Tambayan Hub, you agree to these Terms and our Privacy Policy. If you do not agree, please discontinue use immediately. These terms apply to all visitors, users, and others who access the service."
+    },
+    {
+      id: 2,
+      title: "Your Content",
+      icon: Users,
+      points: [
+        "You own your stories, forum posts, and comments, but you grant us a license to host and display them.",
+        "You confirm you have the rights to post your content and it doesn't break copyright laws.",
+        "We are a platform for community interaction, not the author of user-generated content."
+      ]
+    },
+    {
+      id: 3,
+      title: "Tambayan Radio & Media",
+      icon: Radio,
+      points: [
+        "Our Radio feature acts as a portal to third-party OPM and community streams.",
+        "We do not own, host, or claim copyright over the music broadcasted; all rights belong to the respective artists/labels.",
+        "Streaming is provided for non-commercial, promotional, and entertainment purposes only.",
+        "We are not responsible for the uptime or content of external third-party streams."
+      ]
+    },
+    {
+      id: 4,
+      title: "Community Rules",
+      icon: ShieldAlert,
+      points: [
+        "Be respectful; no harassment, hate speech, or 'bardagulan' that crosses the line into abuse.",
+        "No spam, scams, or illegal activities within the forums or chat sections.",
+        "No explicit or pornographic material. This is a community-centric tambayan.",
+        "We reserve the right to moderate, edit, or remove content at our sole discretion."
+      ]
+    },
+    {
+      id: 5,
+      title: "Accounts & Security",
+      icon: Fingerprint,
+      content: "You are responsible for keeping your login credentials safe. We may suspend or terminate accounts that violate these terms or pose a security risk to the community."
+    },
+    {
+      id: 6,
+      title: "Intellectual Property",
+      icon: Copyright,
+      content: "The Pinoy Tambayan Hub branding, UI design, logos, and original code are our property. Please do not copy, modify, or reverse engineer our assets without explicit permission."
+    }
+  ];
 
   return (
     <>
-      {/* SEO */}
-      <Head>
-        <title>{metaTitle}</title>
-        <meta name="description" content={metaDesc} />
-        <link rel="canonical" href={canonical} />
+      <MetaHead 
+        title="Terms of Service | Pinoy Tambayan Hub" 
+        description="Read the rules and guidelines for using Pinoy Tambayan Hub. Updated for 2026 community standards."
+      />
 
-        <meta property="og:title" content="Terms of Service" />
-        <meta property="og:description" content={metaDesc} />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content={canonical} />
-        <meta property="og:image" content="/brand/og-cover.png" />
+      {/* Structured Data for SEO */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": "Terms of Service",
+            "dateModified": "2026-02-25",
+            "publisher": {
+              "@type": "Organization",
+              "name": "Pinoy Tambayan Hub",
+              "url": "https://pinoytambayanhub.com"
+            }
+          }),
+        }}
+      />
 
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Terms of Service" />
-        <meta name="twitter:description" content={metaDesc} />
-        <meta name="twitter:image" content="/brand/og-cover.png" />
-
-        {/* JSON-LD: Legal page */}
-        <script
-          type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "WebPage",
-              name: "Terms of Service",
-              description: metaDesc,
-              url: canonical,
-              isPartOf: {
-                "@type": "WebSite",
-                name: "Pinoy Tambayan Hub",
-                url: SITE_URL,
-              },
-              dateModified: new Date("2025-03-01").toISOString(), // adjust the exact date if needed
-            }),
-          }}
-        />
-      </Head>
-
-      <section className="section">
-        <div className="container-page max-w-3xl">
-          <h1 className="page-title">📜 Terms of Service</h1>
-          <p className="text-gray-400 mb-4">
-            Last updated: <span className="text-gray-300">{LAST_UPDATED}</span>
-          </p>
-
-          {/* Using the Site */}
-          <div className="card mb-4">
-            <h2 className="font-semibold text-white mb-2">1) Using Pinoy Tambayan Hub</h2>
-            <p className="text-gray-300">
-              By accessing or using this site, you agree to these Terms and our Privacy Policy.
-              If you do not agree, please discontinue use.
+      <section className="min-h-screen pt-28 pb-20 bg-[#020617] text-slate-200">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6">
+          
+          {/* Header */}
+          <div className="mb-12">
+            <div className="flex items-center gap-3 text-blue-500 mb-2">
+              <Scale size={24} />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em]">Legal Framework</span>
+            </div>
+            <h1 className="text-4xl font-black text-white italic uppercase tracking-tighter mb-2">
+              Terms of Service
+            </h1>
+            <p className="text-slate-500 text-sm font-bold">
+              Last updated: <span className="text-blue-400/80">{LAST_UPDATED}</span>
             </p>
           </div>
 
-          {/* User Content */}
-          <div className="card mb-4">
-            <h2 className="font-semibold text-white mb-2">2) Your Content</h2>
-            <ul className="list-disc pl-5 space-y-1 text-gray-300">
-              <li>You are responsible for content you post (stories, comments, reactions).</li>
-              <li>
-                You grant us a worldwide, non-exclusive, royalty-free license to host, display, and
-                distribute your content on the service.
-              </li>
-              <li>
-                You confirm you have the rights to post it and that it does not infringe any third-party rights.
-              </li>
-            </ul>
+          {/* Content Sections */}
+          <div className="space-y-6">
+            {sections.map((section) => (
+              <div key={section.id} className="bg-slate-900/50 border border-white/5 rounded-[2rem] p-8 hover:border-white/10 transition-colors">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-500">
+                    <section.icon size={20} />
+                  </div>
+                  <h2 className="text-lg font-black text-white uppercase italic tracking-tight">
+                    {section.id}. {section.title}
+                  </h2>
+                </div>
+                
+                {section.content && (
+                  <p className="text-slate-400 leading-relaxed text-sm font-medium">
+                    {section.content}
+                  </p>
+                )}
+
+                {section.points && (
+                  <ul className="space-y-3">
+                    {section.points.map((point, idx) => (
+                      <li key={idx} className="flex gap-3 text-sm text-slate-400 font-medium leading-relaxed">
+                        <span className="text-blue-600 font-black">•</span>
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+
+            {/* Liability & Contact */}
+            <div className="bg-blue-600/5 border border-blue-500/10 rounded-[2rem] p-8">
+              <h2 className="text-lg font-black text-white uppercase italic tracking-tight mb-4">
+                7. Liability & Disclaimers
+              </h2>
+              <p className="text-slate-400 text-sm leading-relaxed mb-6">
+                The service is provided on an "as is" and "as available" basis. Pinoy Tambayan Hub does not warrant that the service will be uninterrupted or error-free. We are not liable for any direct, indirect, or incidental damages resulting from your use of the site or third-party media streams.
+              </p>
+              <div className="pt-6 border-t border-white/5">
+                <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">
+                  Got questions? <Link href="/contact" className="text-blue-500 hover:text-blue-400 underline decoration-2 underline-offset-4 transition-colors">Contact the Admin Team</Link>.
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Community Rules */}
-          <div className="card mb-4">
-            <h2 className="font-semibold text-white mb-2">3) Community Rules</h2>
-            <ul className="list-disc pl-5 space-y-1 text-gray-300">
-              <li>Be respectful; no harassment, hate speech, or threats.</li>
-              <li>No spam, scams, or illegal content/activity.</li>
-              <li>No explicit, pornographic, or excessively violent material.</li>
-              <li>We may moderate, edit, or remove content at our discretion.</li>
-            </ul>
-          </div>
-
-          {/* Accounts & Security */}
-          <div className="card mb-4">
-            <h2 className="font-semibold text-white mb-2">4) Accounts & Security</h2>
-            <ul className="list-disc pl-5 space-y-1 text-gray-300">
-              <li>Keep your login credentials safe; you’re responsible for activity on your account.</li>
-              <li>
-                We may suspend or terminate accounts that violate these Terms or pose a risk to others.
-              </li>
-            </ul>
-          </div>
-
-          {/* Intellectual Property */}
-          <div className="card mb-4">
-            <h2 className="font-semibold text-white mb-2">5) Intellectual Property</h2>
-            <p className="text-gray-300">
-              The Pinoy Tambayan Hub name, logo, UI, and code are protected. Do not copy, reverse engineer,
-              or misuse our assets except as permitted by law.
+          <div className="mt-16 text-center">
+            <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.4em]">
+              Pinoy Tambayan Hub &copy; {new Date().getFullYear()}
             </p>
           </div>
-
-          {/* Disclaimers & Liability */}
-          <div className="card mb-4">
-            <h2 className="font-semibold text-white mb-2">6) Disclaimers & Limitation of Liability</h2>
-            <ul className="list-disc pl-5 space-y-1 text-gray-300">
-              <li>The service is provided “as is” without warranties of any kind.</li>
-              <li>
-                We are not liable for indirect or consequential damages, or for third-party content and links.
-              </li>
-            </ul>
-          </div>
-
-          {/* Changes */}
-          <div className="card mb-4">
-            <h2 className="font-semibold text-white mb-2">7) Changes to These Terms</h2>
-            <p className="text-gray-300">
-              We may update these Terms from time to time. Continued use after changes means you accept
-              the updated Terms.
-            </p>
-          </div>
-
-          {/* Contact */}
-          <div className="card">
-            <h2 className="font-semibold text-white mb-2">Contact</h2>
-            <p className="text-gray-300">
-              Questions? Reach us via{" "}
-              <Link href="/contact" className="text-blue-400 hover:underline">
-                Contact
-              </Link>
-              .
-            </p>
-          </div>
-
-          <div className="page-bottom-spacer" />
         </div>
       </section>
     </>

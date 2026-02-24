@@ -21,13 +21,11 @@ import {
 } from "firebase/firestore";
 import { auth, db, googleProvider, facebookProvider } from "../firebase/clientApp";
 
-/** Add handle support so profile?.handle works everywhere */
 export type Profile = {
   uid: string;
   displayName: string | null;
   photoURL: string | null;
   email: string | null;
-  /** optional public username/handle, if you decide to set it elsewhere */
   handle?: string | null;
   createdAt?: DocumentData;
   updatedAt?: DocumentData;
@@ -54,13 +52,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Upsert a Firestore profile doc for the current user.
-  // If a profile already has `handle`, we keep it.
   const upsertProfile = async (u: User) => {
     const ref = doc(db, "users", u.uid);
     const snap = await getDoc(ref);
-
-    // Preserve existing handle if present in Firestore
     const existing = (snap.exists() ? (snap.data() as Partial<Profile>) : {}) || {};
 
     const base: Profile = {
@@ -68,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       displayName: u.displayName ?? null,
       photoURL: u.photoURL ?? null,
       email: u.email ?? null,
-      handle: existing.handle ?? null, // <-- keep saved handle if you add it later
+      handle: existing.handle ?? null,
       updatedAt: serverTimestamp(),
     };
 
@@ -83,90 +77,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u) await upsertProfile(u);
-      else setProfile(null);
+      // Fixed: Don't block the initial 'loading' state on the Firestore profile fetch.
+      // This allows the Radio player to stay mounted while profile data loads.
+      if (u) {
+        upsertProfile(u);
+      } else {
+        setProfile(null);
+      }
       setLoading(false);
     });
     return () => unsub();
   }, []);
 
-  // --- Providers ---
   const signInGoogle = async () => {
-    setLoading(true);
     try {
       const res = await signInWithPopup(auth, googleProvider);
       await upsertProfile(res.user);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const signInFacebook = async () => {
-    setLoading(true);
     try {
       const res = await signInWithPopup(auth, facebookProvider);
       await upsertProfile(res.user);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); }
   };
 
-  // --- Email/password with verification ---
   const registerEmail = async (email: string, password: string, displayName?: string) => {
-    setLoading(true);
-    try {
-      const { user } = await createUserWithEmailAndPassword(auth, email, password);
-      if (displayName) await updateProfile(user, { displayName });
-
-      await upsertProfile(user);
-
-      const acs: ActionCodeSettings = {
-        url: `${window.location.origin}/login?verified=1`,
-        handleCodeInApp: false,
-      };
-      await sendEmailVerification(user, acs);
-
-      await signOut(auth);
-    } finally {
-      setLoading(false);
-    }
+    const { user } = await createUserWithEmailAndPassword(auth, email, password);
+    if (displayName) await updateProfile(user, { displayName });
+    await upsertProfile(user);
+    const acs: ActionCodeSettings = {
+      url: `${window.location.origin}/login?verified=1`,
+      handleCodeInApp: false,
+    };
+    await sendEmailVerification(user, acs);
+    await signOut(auth);
   };
 
   const signInEmail = async (email: string, password: string) => {
-    setLoading(true);
-    try {
-      const { user } = await signInWithEmailAndPassword(auth, email, password);
-
-      if (!user.emailVerified) {
-        try {
-          await sendEmailVerification(user, {
-            url: `${window.location.origin}/login?verified=1`,
-            handleCodeInApp: false,
-          });
-        } catch {
-          /* ignore */
-        }
-        await signOut(auth);
-        throw new Error("Please verify your email. We just re-sent the link.");
-      }
-
-      await upsertProfile(user);
-    } finally {
-      setLoading(false);
+    const { user } = await signInWithEmailAndPassword(auth, email, password);
+    if (!user.emailVerified) {
+      await sendEmailVerification(user, {
+        url: `${window.location.origin}/login?verified=1`,
+        handleCodeInApp: false,
+      });
+      await signOut(auth);
+      throw new Error("Please verify your email.");
     }
+    await upsertProfile(user);
   };
 
   const resendVerification = async () => {
-    if (!auth.currentUser) throw new Error("Sign in first to resend.");
+    if (!auth.currentUser) throw new Error("Sign in first.");
     await sendEmailVerification(auth.currentUser, {
       url: `${window.location.origin}/login?verified=1`,
       handleCodeInApp: false,
     });
   };
 
-  // --- Profile updates ---
   const updateDisplayName = async (name: string) => {
     if (!auth.currentUser) return;
     await updateProfile(auth.currentUser, { displayName: name });
@@ -185,17 +156,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      user,
-      profile,
-      loading,
-      signInGoogle,
-      signInFacebook,
-      registerEmail,
-      signInEmail,
-      resendVerification,
-      updateDisplayName,
-      updatePhotoURL,
-      signOutApp,
+      user, profile, loading, signInGoogle, signInFacebook,
+      registerEmail, signInEmail, resendVerification,
+      updateDisplayName, updatePhotoURL, signOutApp,
     }),
     [user, profile, loading]
   );
