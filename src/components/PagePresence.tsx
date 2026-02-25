@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../firebase/clientApp";
+import { useEffect, useRef } from "react";
+import { doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 
 function anonId() {
@@ -10,9 +10,7 @@ function anonId() {
   try {
     let id = localStorage.getItem(KEY);
     if (!id) {
-      const rand =
-        (globalThis.crypto?.randomUUID?.() as string | undefined) ??
-        Math.random().toString(36).slice(2);
+      const rand = (globalThis.crypto?.randomUUID?.()) ?? Math.random().toString(36).slice(2);
       id = `anon-${rand}`;
       localStorage.setItem(KEY, id);
     }
@@ -26,46 +24,71 @@ type Props = { path: string };
 
 export default function PagePresence({ path }: Props) {
   const { user } = useAuth();
+  const lastIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Use UID when signed in, anon-* when signed out (matches rules)
-    const id = user?.uid ?? anonId();
-    const ref = doc(db, "page_presence", id);
+    const currentId = user?.uid ?? anonId();
+    const ref = doc(db, "page_presence", currentId);
 
-    const base = {
-      id,
-      uid: user?.uid ?? null, // rules validate this
-      path,
-      lastActive: serverTimestamp(),
-      since: serverTimestamp(),
-    };
+    // 1. Cleanup old ID if user just logged in (prevents double counting)
+    if (lastIdRef.current && lastIdRef.current !== currentId) {
+      const oldRef = doc(db, "page_presence", lastIdRef.current);
+      deleteDoc(oldRef).catch(() => {});
+    }
+    lastIdRef.current = currentId;
 
-    // create/merge
-    setDoc(ref, base, { merge: true }).catch(() => {});
-
-    // heartbeat
-    const t = setInterval(() => {
-      updateDoc(ref, {
-        lastActive: serverTimestamp(),
-        path,
-        uid: user?.uid ?? null,
-      }).catch(() => {});
-    }, 25_000);
-
-    // bump when tab becomes visible
-    const onVis = () => {
-      if (!document.hidden) {
-        updateDoc(ref, { lastActive: serverTimestamp(), path }).catch(() => {});
+    const initPresence = async () => {
+      try {
+        await setDoc(ref, {
+          id: currentId,
+          uid: user?.uid ?? null,
+          displayName: user?.displayName ?? "Ka-Tambayan",
+          photoURL: user?.photoURL ?? null,
+          path,
+          lastActive: serverTimestamp(),
+          since: serverTimestamp(),
+          isOnline: true
+        }, { merge: true });
+      } catch (e) {
+        console.warn("Presence init failed:", e);
       }
     };
-    document.addEventListener("visibilitychange", onVis);
+
+    initPresence();
+
+    // 2. Optimized Heartbeat (Only runs if tab is active)
+    const heartbeat = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        updateDoc(ref, {
+          lastActive: serverTimestamp(),
+          path,
+          uid: user?.uid ?? null,
+        }).catch(() => {});
+      }
+    }, 30_000); // 30s is the "sweet spot" for Firebase usage vs accuracy
+
+    // 3. Activity Listener (Bumps presence on interaction)
+    const bumpPresence = () => {
+      if (document.visibilityState === 'visible') {
+        updateDoc(ref, { lastActive: serverTimestamp() }).catch(() => {});
+      }
+    };
+
+    document.addEventListener("visibilitychange", bumpPresence);
+    window.addEventListener("focus", bumpPresence);
 
     return () => {
-      clearInterval(t);
-      document.removeEventListener("visibilitychange", onVis);
-      updateDoc(ref, { lastActive: serverTimestamp() }).catch(() => {});
+      clearInterval(heartbeat);
+      document.removeEventListener("visibilitychange", bumpPresence);
+      window.removeEventListener("focus", bumpPresence);
+      
+      // Mark as offline on unmount
+      updateDoc(ref, { 
+        isOnline: false,
+        lastActive: serverTimestamp() 
+      }).catch(() => {});
     };
-  }, [user?.uid, path]); // switch anon <-> uid correctly
+  }, [user?.uid, path]);
 
   return null;
 }

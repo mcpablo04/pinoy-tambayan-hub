@@ -19,14 +19,16 @@ import {
   serverTimestamp,
   type DocumentData,
 } from "firebase/firestore";
-import { auth, db, googleProvider, facebookProvider } from "../firebase/clientApp";
+import { auth, db, googleProvider, facebookProvider } from "../lib/firebase";
 
+/* --------------------------- TYPES --------------------------- */
 export type Profile = {
   uid: string;
   displayName: string | null;
   photoURL: string | null;
   email: string | null;
-  handle?: string | null;
+  handle?: string | null;    // Stored handle
+  username?: string | null;  // Alias for UI consistency
   createdAt?: DocumentData;
   updatedAt?: DocumentData;
 };
@@ -57,12 +59,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const snap = await getDoc(ref);
     const existing = (snap.exists() ? (snap.data() as Partial<Profile>) : {}) || {};
 
+    // Logic to determine handle: Priority to existing, then fallback to email prefix
+    const currentHandle = existing.username || existing.handle || u.email?.split('@')[0] || "tambay";
+
     const base: Profile = {
       uid: u.uid,
-      displayName: u.displayName ?? null,
-      photoURL: u.photoURL ?? null,
+      displayName: u.displayName ?? existing.displayName ?? null,
+      photoURL: u.photoURL ?? existing.photoURL ?? null,
       email: u.email ?? null,
-      handle: existing.handle ?? null,
+      handle: currentHandle,
+      username: currentHandle, // Syncing both fields
       updatedAt: serverTimestamp(),
     };
 
@@ -79,8 +85,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      // Fixed: Don't block the initial 'loading' state on the Firestore profile fetch.
-      // This allows the Radio player to stay mounted while profile data loads.
       if (u) {
         upsertProfile(u);
       } else {

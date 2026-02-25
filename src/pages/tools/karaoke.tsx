@@ -1,11 +1,11 @@
-// src/pages/tools/karaoke.tsx
 "use client";
 
-import Head from "next/head";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Mic2, ChevronLeft, Youtube, RefreshCw, Music } from "lucide-react";
+import MetaHead from "../../components/MetaHead";
 
-type Song = { title: string; artist: string; year?: number };
+type Song = { title: string; artist: string };
 
 const OPM_SONGS: Song[] = [
   { title: "Tagpuan", artist: "Moira Dela Torre" },
@@ -25,108 +25,90 @@ const OPM_SONGS: Song[] = [
   { title: "Hari ng Sablay", artist: "Sugarfree" },
 ];
 
-function pickRandom<T>(arr: T[]) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
 export default function KaraokeRoulette() {
   const [current, setCurrent] = useState<Song | null>(null);
+  const [spinning, setSpinning] = useState(false);
 
-  const title = "Karaoke Roulette — Pinoy Tambayan Hub";
-  const description =
-    "Spin a random OPM hit to sing! Family-friendly karaoke idea generator for tambayan nights.";
-
-  // snap to the real top on mount
   useEffect(() => {
-    try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
 
-  const searchUrl = useMemo(() => {
-    if (!current) return "#";
-    const q = encodeURIComponent(`${current.title} ${current.artist} karaoke`);
-    return `https://www.youtube.com/results?search_query=${q}`;
-  }, [current]);
-
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://pinoytambayanhub.com/" },
-      { "@type": "ListItem", position: 2, name: "Tools", item: "https://pinoytambayanhub.com/tools" },
-      { "@type": "ListItem", position: 3, name: "Karaoke Roulette", item: "https://pinoytambayanhub.com/tools/karaoke" },
-    ],
+  const spin = () => {
+    setSpinning(true);
+    setTimeout(() => {
+      const pick = OPM_SONGS[Math.floor(Math.random() * OPM_SONGS.length)];
+      setCurrent(pick);
+      setSpinning(false);
+    }, 600);
   };
 
+  const youtubeUrl = useMemo(() => {
+    if (!current) return "#";
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(current.title + " " + current.artist + " karaoke")}`;
+  }, [current]);
+
   return (
-    <>
-      <Head>
-        <title>{title}</title>
-        <meta name="description" content={description} />
+    <div className="min-h-screen bg-[#020617] text-slate-200 pb-24 pt-32 overflow-hidden">
+      <MetaHead title="Karaoke Roulette | Pinoy Tambayan Hub" />
 
-        <meta property="og:title" content={title} />
-        <meta property="og:description" content={description} />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://pinoytambayanhub.com/tools/karaoke" />
-        <meta property="og:image" content="https://pinoytambayanhub.com/brand/og-card.png" />
+      <div className="max-w-2xl mx-auto px-6 relative">
+        {/* Glow effect */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-pink-500/10 blur-[120px] rounded-full pointer-events-none" />
 
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={title} />
-        <meta name="twitter:description" content={description} />
+        <Link href="/tools" className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-pink-500 transition-colors mb-8">
+          <ChevronLeft size={14} /> Back to Tools
+        </Link>
 
-        <link rel="canonical" href="https://pinoytambayanhub.com/tools/karaoke" />
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      </Head>
-
-      <section className="section">
-        <div className="container-page max-w-3xl text-lighttext">
-          {/* Back to Tools */}
-          <div className="mb-3">
-            <Link href="/tools" className="text-sm text-gray-400 hover:text-blue-400">
-              ← Back to Tools
-            </Link>
+        <div className="flex items-center gap-4 mb-8">
+          <div className="w-12 h-12 rounded-2xl bg-pink-500/10 text-pink-500 flex items-center justify-center shadow-xl border border-pink-500/20">
+            <Mic2 size={24} />
           </div>
+          <h1 className="text-3xl font-black text-white italic uppercase tracking-tighter leading-none">
+            Karaoke <span className="text-pink-500 text-xl block">Roulette</span>
+          </h1>
+        </div>
 
-          <h1 className="page-title">🎤 Karaoke Roulette</h1>
-          <p className="text-gray-400 mb-6">
-            Spin to get a random OPM hit to sing! We only suggest titles/artists and send you to a YouTube search
-            for karaoke versions — no copyrighted media embedded.
-          </p>
+        <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 rounded-[3rem] p-10 text-center shadow-2xl relative z-10">
+          <button 
+            onClick={spin}
+            disabled={spinning}
+            className="group relative w-24 h-24 bg-pink-600 hover:bg-pink-500 rounded-full flex items-center justify-center mx-auto mb-10 transition-all shadow-[0_0_30px_rgba(219,39,119,0.3)] disabled:opacity-50 active:scale-90"
+          >
+            <RefreshCw size={32} className={`text-white transition-transform duration-700 ${spinning ? 'animate-spin' : 'group-hover:rotate-180'}`} />
+          </button>
 
-          <div className="card space-y-5">
-            <button
-              onClick={() => setCurrent(pickRandom(OPM_SONGS))}
-              className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold"
-            >
-              Spin Song 🎶
-            </button>
-
+          <div className="min-h-[160px] flex flex-col justify-center">
             {current ? (
-              <div className="rounded-lg bg-gray-800/60 border border-white/5 p-4">
-                <div className="text-sm text-gray-400 mb-1">You got:</div>
-                <div className="text-xl font-semibold">{current.title}</div>
-                <div className="text-gray-300">{current.artist}</div>
-
-                <a
-                  href={searchUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block mt-4 px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100"
-                >
-                  Search karaoke on YouTube ↗
-                </a>
+              <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-pink-500">Ang kakantahin mo ay...</p>
+                <h2 className="text-4xl font-black text-white italic uppercase tracking-tight leading-tight">{current.title}</h2>
+                <p className="text-slate-400 font-bold text-lg uppercase">{current.artist}</p>
+                
+                <div className="pt-8">
+                  <a 
+                    href={youtubeUrl} 
+                    target="_blank" 
+                    className="inline-flex items-center gap-3 px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white transition-all group"
+                  >
+                    <Youtube size={18} className="text-red-500 group-hover:scale-110 transition-transform" />
+                    Search Karaoke on YT
+                  </a>
+                </div>
               </div>
             ) : (
-              <p className="text-gray-400">Press “Spin Song” to get a random pick.</p>
+              <div className="space-y-4">
+                <Music size={40} className="mx-auto text-slate-800" />
+                <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Ready for the mic?</p>
+                <p className="text-slate-600 text-sm italic">Press the button above to pick a random hit!</p>
+              </div>
             )}
           </div>
-
-          <div className="mt-6 text-sm text-gray-500">
-            Tip: Open <a href="/radio" className="underline">Radio</a> in another tab for background vibes.
-          </div>
-
-          <div className="page-bottom-spacer" />
         </div>
-      </section>
-    </>
+
+        <p className="mt-12 text-center text-[10px] text-slate-600 font-bold uppercase tracking-widest leading-relaxed">
+           Open <Link href="/radio" className="text-blue-500 hover:underline">Radio</Link> in another tab for the perfect background vibes.
+        </p>
+      </div>
+    </div>
   );
 }

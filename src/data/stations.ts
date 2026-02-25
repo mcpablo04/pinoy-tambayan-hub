@@ -1,4 +1,3 @@
-// src/data/stations.ts
 import { Station } from "../context/PlayerContext";
 
 /** * Extend Station with optional metadata for directory pages.
@@ -6,11 +5,11 @@ import { Station } from "../context/PlayerContext";
  */
 export type StationEx = Station & {
   description?: string;
-  genre?: string;
+  genre: string; // Made non-optional for the filter logic
   city?: string;
   country?: string;
   website?: string;
-  officialEmbedUrl?: string; // if a station provides its own embeddable player
+  officialEmbedUrl?: string;
 };
 
 export const STATIONS: StationEx[] = [
@@ -30,7 +29,7 @@ export const STATIONS: StationEx[] = [
     name: "96.3 Easy Rock Manila",
     streamUrl: "https://azura.easyrock.com.ph/listen/easy_rock_manila/radio.mp3",
     logo: "https://static2.mytuner.mobi/media/tvos_radios/138/dwrk-963-easy-rock.c2c03660.png",
-    genre: "Soft Rock / Adult Contemporary",
+    genre: "Soft Rock",
     city: "Makati",
     country: "Philippines",
     website: "https://www.easyrock.com.ph/",
@@ -41,7 +40,7 @@ export const STATIONS: StationEx[] = [
     name: "106.7 Energy FM Manila",
     streamUrl: "http://ph-icecast.eradioportal.com:8000/energyfm_manila",
     logo: "https://static2.mytuner.mobi/media/tvos_radios/PG5RgCjKLe.png",
-    genre: "Top 40 / Variety",
+    genre: "Top 40",
     city: "Mandaluyong",
     country: "Philippines",
     website: "https://www.energyfm1067.com/",
@@ -52,7 +51,7 @@ export const STATIONS: StationEx[] = [
     name: "91.5 Win Radio Manila",
     streamUrl: "https://stream-172.zeno.fm/2ss1hgnu6hhvv",
     logo: "https://static2.mytuner.mobi/media/tvos_radios/x4zvpbxrnhkk.jpg",
-    genre: "OPM / Pop",
+    genre: "Pop / OPM",
     city: "Pasig",
     country: "Philippines",
     website: "https://www.winradio.com.ph/",
@@ -74,7 +73,7 @@ export const STATIONS: StationEx[] = [
     name: "97.9 Home Radio",
     streamUrl: "https://hrmanila.radioca.st/stream",
     logo: "https://static2.mytuner.mobi/media/tvos_radios/3fFrky9eJE.jpg",
-    genre: "Easy Listening / Variety",
+    genre: "Easy Listening",
     city: "Quezon City",
     country: "Philippines",
     website: "https://homeradiomanila.com/",
@@ -85,7 +84,7 @@ export const STATIONS: StationEx[] = [
     name: "102.7 Star FM Manila",
     streamUrl: "https://stream-24.zeno.fm/536cwdq78heuv?zs=QvLMk8MiRVyUrdV4IHH_Dg",
     logo: "https://static2.mytuner.mobi/media/tvos_radios/848/star-fm-manila.c6a245b5.png",
-    genre: "Top 40 / OPM",
+    genre: "Top 40",
     city: "Manila",
     country: "Philippines",
     website: "https://www.bomboradyo.com/starfm/",
@@ -96,7 +95,7 @@ export const STATIONS: StationEx[] = [
     name: "MOR entertainment",
     streamUrl: "https://stream-152.zeno.fm/0ha8ftewqp8uv",
     logo: "https://static2.mytuner.mobi/media/tvos_radios/ngt3qgajtbv4.png",
-    genre: "OPM / Pop",
+    genre: "Pop / OPM",
     city: "Metro Manila (online)",
     country: "Philippines",
     website: "https://www.mor1019.com/",
@@ -107,7 +106,7 @@ export const STATIONS: StationEx[] = [
     name: "106.3 Yes! The Best Dagupan",
     streamUrl: "https://yesfmdagupan.radioca.st/;",
     logo: "https://static2.mytuner.mobi/media/tvos_radios/BqJVd2R4x8.jpg",
-    genre: "OPM / Pop",
+    genre: "Masa / OPM",
     city: "Dagupan",
     country: "Philippines",
     website: "https://www.yesthebest.com.ph/",
@@ -129,10 +128,13 @@ export const STATIONS: StationEx[] = [
     name: "630 AM DZMM",
     streamUrl: "http://us1.amfmph.com:8852/stream",
     logo: "https://static2.mytuner.mobi/media/tvos_radios/142/dwpm-radyo-630.4b154568.jpg",
-    genre: "News / Public Service",
+    genre: "News",
     city: "Quezon City",
     country: "Philippines",
     website: "https://news.abs-cbn.com/",
     description: "News and public service programming with nationwide coverage and updates.",
   },
 ];
+
+// Extracted list of unique genres for the Filter UI
+export const UNIQUE_GENRES = Array.from(new Set(STATIONS.map((s) => s.genre)));

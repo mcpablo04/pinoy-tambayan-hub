@@ -11,26 +11,26 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { db } from "../firebase/clientApp";
+import { db } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
+import { motion, AnimatePresence } from "framer-motion";
 
 export type NotifyKind = "success" | "error" | "info";
 export type Notify = (kind: NotifyKind, text: string) => void;
 
 type ReactionType = "heart" | "like" | "fire" | "sad" | "wow";
 
-const REACTIONS: { key: ReactionType; label: string; icon: string }[] = [
-  { key: "heart", label: "Love", icon: "❤️" },
-  { key: "like",  label: "Like", icon: "👍" },
-  { key: "fire",  label: "Fire", icon: "🔥" },
-  { key: "sad",   label: "Sad",  icon: "😢" },
-  { key: "wow",   label: "Wow",  icon: "😮" },
+const REACTIONS: { key: ReactionType; label: string; icon: string; color: string }[] = [
+  { key: "heart", label: "Love", icon: "❤️", color: "bg-pink-500/20 text-pink-500 border-pink-500/30" },
+  { key: "like",  label: "Like", icon: "👍", color: "bg-blue-500/20 text-blue-500 border-blue-500/30" },
+  { key: "fire",  label: "Fire", icon: "🔥", color: "bg-orange-500/20 text-orange-500 border-orange-500/30" },
+  { key: "sad",   label: "Sad",  icon: "😢", color: "bg-indigo-500/20 text-indigo-500 border-indigo-500/30" },
+  { key: "wow",   label: "Wow",  icon: "😮", color: "bg-yellow-500/20 text-yellow-500 border-yellow-500/30" },
 ];
 
 type Props = {
   storyId: string;
   compact?: boolean;
-  /** Optional toast hook from the page */
   notify?: Notify;
 };
 
@@ -44,7 +44,6 @@ export default function ReactionBar({ storyId, compact = false, notify }: Props)
     heart: 0, like: 0, fire: 0, sad: 0, wow: 0,
   });
 
-  // Live counts + my reaction
   useEffect(() => {
     const ref = collection(db, "stories", storyId, "reactions");
     return onSnapshot(ref, (snap) => {
@@ -62,65 +61,86 @@ export default function ReactionBar({ storyId, compact = false, notify }: Props)
 
   const total = useMemo(() => Object.values(counts).reduce((a, b) => a + b, 0), [counts]);
 
-  const goLogin = () => {
-    const next = encodeURIComponent(router.asPath || `/stories/${storyId}`);
-    router.push(`/login?next=${next}`);
-  };
-
   const toggle = async (t: ReactionType) => {
     if (busy) return;
-    if (!user?.uid) return goLogin();
+    if (!user?.uid) {
+      const next = encodeURIComponent(router.asPath);
+      router.push(`/login?next=${next}`);
+      return;
+    }
 
+    // Optimistic UI update
+    const previousMine = mine;
+    const isRemoving = mine === t;
+    
     setBusy(true);
+    setMine(isRemoving ? null : t);
+
     const myRef = doc(db, "stories", storyId, "reactions", user.uid);
 
     try {
-      if (mine === t) {
+      if (isRemoving) {
         await deleteDoc(myRef);
-        notify?.("success", "Reaction removed.");
       } else {
-        try {
-          await updateDoc(myRef, { type: t });
-          notify?.("success", "Reaction updated.");
-        } catch {
-          await setDoc(myRef, { type: t, createdAt: serverTimestamp() });
-          notify?.("success", "Reaction added.");
-        }
+        await setDoc(myRef, { type: t, updatedAt: serverTimestamp() }, { merge: true });
       }
     } catch (e: any) {
-      notify?.("error", e?.code === "permission-denied" ? "You don't have permission to react." : "Failed to react.");
+      setMine(previousMine); // Rollback on error
+      notify?.("error", "Action failed. Check connection.");
     } finally {
       setBusy(false);
     }
   };
 
-  // Blue active state + mobile-friendly tap targets
-  const size = compact ? "h-9 px-3 text-sm" : "h-10 px-4 text-sm sm:text-base";
-  const baseBtn =
-    "inline-flex items-center justify-center rounded-full border transition " +
-    "bg-white/5 text-gray-200 border-white/10 hover:bg-white/10 " +
-    "focus:outline-none focus:ring-2 focus:ring-blue-500/40 " +
-    "min-w-[48px] " + size;
-
   return (
-    <div role="toolbar" aria-label="Story reactions" className={`flex flex-wrap items-center gap-2 ${compact ? "" : "mt-4"}`}>
-      {REACTIONS.map((r) => {
-        const active = mine === r.key;
-        return (
-          <button
-            key={r.key}
-            onClick={() => toggle(r.key)}
-            disabled={busy}
-            aria-pressed={active}
-            aria-label={`${r.label} (${counts[r.key] || 0})`}
-            className={`${baseBtn} ${active ? "bg-blue-600 text-white border-blue-500" : ""} ${busy ? "opacity-70 cursor-not-allowed" : ""}`}
-          >
-            <span className={compact ? "mr-1 text-[17px]" : "mr-1 text-[19px]"}>{r.icon}</span>
-            <span className="font-medium tabular-nums">{counts[r.key] || 0}</span>
-          </button>
-        );
-      })}
-      {!compact && <span className="basis-full sm:basis-auto sm:ml-2 text-sm text-gray-400">Total: {total}</span>}
+    <div className={`flex items-center gap-2 ${compact ? "" : "mt-6 py-4 border-y border-white/5"}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        {REACTIONS.map((r) => {
+          const active = mine === r.key;
+          return (
+            <motion.button
+              key={r.key}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => toggle(r.key)}
+              className={`
+                relative flex items-center gap-2 rounded-2xl border transition-all duration-300
+                ${compact ? "px-3 py-1.5" : "px-4 py-2"}
+                ${active 
+                  ? `${r.color} shadow-lg shadow-current/10 border-current` 
+                  : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white"
+                }
+              `}
+            >
+              <span className={compact ? "text-lg" : "text-xl"}>{r.icon}</span>
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={counts[r.key]}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  className="text-xs font-black tabular-nums"
+                >
+                  {counts[r.key] || 0}
+                </motion.span>
+              </AnimatePresence>
+            </motion.button>
+          );
+        })}
+      </div>
+
+      {!compact && total > 0 && (
+        <div className="ml-auto hidden sm:flex items-center gap-2">
+           <div className="flex -space-x-2">
+              {REACTIONS.filter(r => counts[r.key] > 0).slice(0, 3).map(r => (
+                <span key={r.key} className="text-xs">{r.icon}</span>
+              ))}
+           </div>
+           <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+             {total} {total === 1 ? 'Reaction' : 'Reactions'}
+           </span>
+        </div>
+      )}
     </div>
   );
 }

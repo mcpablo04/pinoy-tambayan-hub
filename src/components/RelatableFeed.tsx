@@ -12,7 +12,7 @@ import {
   doc,
   increment,
 } from "firebase/firestore";
-import { db } from "../firebase/clientApp";
+import { db } from "../lib/firebase";
 
 type Confession = {
   id: string;

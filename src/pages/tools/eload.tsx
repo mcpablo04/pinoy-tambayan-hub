@@ -1,22 +1,17 @@
-// src/pages/tools/eload.tsx
 "use client";
 
-import Head from "next/head";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Smartphone, ChevronLeft, Calculator, Info } from "lucide-react";
+import MetaHead from "../../components/MetaHead";
 
 export default function EloadCalculator() {
   const [amount, setAmount] = useState<string>("");
   const [serviceFee, setServiceFee] = useState<string>("2");
   const [discountPct, setDiscountPct] = useState<string>("0");
 
-  const title = "E-load Calculator — Pinoy Tambayan Hub";
-  const description =
-    "Compute prepaid load totals fast, including service fees and optional discounts (reseller margin).";
-
-  // snap to the real top on mount
   useEffect(() => {
-    try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
 
   const numbers = useMemo(() => {
@@ -26,119 +21,98 @@ export default function EloadCalculator() {
     const discounted = amt * (1 - disc / 100);
     const total = discounted + fee;
     return {
-      amt,
-      fee,
-      disc,
       discounted: Math.round(discounted * 100) / 100,
       total: Math.round(total * 100) / 100,
     };
   }, [amount, serviceFee, discountPct]);
 
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://pinoytambayanhub.com/" },
-      { "@type": "ListItem", position: 2, name: "Tools", item: "https://pinoytambayanhub.com/tools" },
-      { "@type": "ListItem", position: 3, name: "E-load Calculator", item: "https://pinoytambayanhub.com/tools/eload" },
-    ],
-  };
-
   return (
-    <>
-      <Head>
-        <title>{title}</title>
-        <meta name="description" content={description} />
+    <div className="min-h-screen bg-[#020617] text-slate-200 pb-24 pt-32">
+      <MetaHead title="E-load Calculator | Pinoy Tambayan Hub" />
+      
+      <div className="max-w-2xl mx-auto px-6">
+        <Link href="/tools" className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-blue-500 transition-colors mb-8">
+          <ChevronLeft size={14} /> Back to Tools
+        </Link>
 
-        <meta property="og:title" content={title} />
-        <meta property="og:description" content={description} />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://pinoytambayanhub.com/tools/eload" />
-        <meta property="og:image" content="https://pinoytambayanhub.com/brand/og-card.png" />
-
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={title} />
-        <meta name="twitter:description" content={description} />
-
-        <link rel="canonical" href="https://pinoytambayanhub.com/tools/eload" />
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      </Head>
-
-      <section className="section">
-        <div className="container-page max-w-3xl text-lighttext">
-          {/* Back to Tools */}
-          <div className="mb-3">
-            <Link href="/tools" className="text-sm text-gray-400 hover:text-blue-400">
-              ← Back to Tools
-            </Link>
+        <div className="flex items-center gap-4 mb-8">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600/10 text-blue-500 flex items-center justify-center shadow-xl border border-blue-500/20">
+            <Smartphone size={24} />
           </div>
+          <h1 className="text-3xl font-black text-white italic uppercase tracking-tighter leading-none">
+            E-load <span className="text-blue-500 text-xl block">Calculator</span>
+          </h1>
+        </div>
 
-          <h1 className="page-title">📱 E-load Calculator</h1>
-          <p className="text-gray-400 mb-6">
-            Quickly compute your prepaid load cost including service fees and optional discounts (e.g., reseller margin).
-          </p>
-
-          <div className="card space-y-4">
-            <label className="block">
-              <span className="text-sm text-gray-300">Load Amount (₱)</span>
+        <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-[2.5rem] p-8 md:p-10 shadow-2xl">
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Load Amount (₱)</label>
               <input
                 type="number"
                 inputMode="numeric"
                 placeholder="e.g., 50"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="mt-1 w-full rounded-md bg-gray-800/80 text-white px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-slate-900 border border-white/5 rounded-2xl py-4 px-6 text-white focus:border-blue-500 outline-none transition-all font-bold text-lg"
               />
-            </label>
+            </div>
 
-            <label className="block">
-              <span className="text-sm text-gray-300">Service Fee (₱)</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                placeholder="e.g., 2"
-                value={serviceFee}
-                onChange={(e) => setServiceFee(e.target.value)}
-                className="mt-1 w-full rounded-md bg-gray-800/80 text-white px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm text-gray-300">Discount (%) — optional</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                placeholder="e.g., 5"
-                value={discountPct}
-                onChange={(e) => setDiscountPct(e.target.value)}
-                className="mt-1 w-full rounded-md bg-gray-800/80 text-white px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </label>
-
-            <div className="rounded-lg bg-gray-800/60 border border-white/5 p-4 space-y-2">
-              <div className="flex justify-between text-gray-300">
-                <span>Amount after discount</span>
-                <span>₱{numbers.discounted.toFixed(2)}</span>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Service Fee (₱)</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={serviceFee}
+                  onChange={(e) => setServiceFee(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/5 rounded-2xl py-4 px-6 text-white focus:border-blue-500 outline-none transition-all font-bold text-lg"
+                />
               </div>
-              <div className="flex justify-between text-gray-300">
-                <span>Service fee</span>
-                <span>₱{numbers.fee.toFixed(2)}</span>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">Discount (%)</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={discountPct}
+                  onChange={(e) => setDiscountPct(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/5 rounded-2xl py-4 px-6 text-white focus:border-blue-500 outline-none transition-all font-bold text-lg"
+                />
               </div>
-              <hr className="border-gray-700" />
-              <div className="flex justify-between text-lg font-semibold">
-                <span>Total to pay</span>
-                <span className="text-blue-400">₱{numbers.total.toFixed(2)}</span>
+            </div>
+
+            {/* RESULT */}
+            <div className="mt-8 bg-blue-600/5 border border-blue-500/20 rounded-3xl p-6 relative overflow-hidden">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-black uppercase tracking-widest text-slate-500">Breakdown</span>
+                <Calculator size={16} className="text-blue-500" />
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm font-bold">
+                  <span className="text-slate-400">Net Amount</span>
+                  <span>₱{numbers.discounted.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-bold">
+                  <span className="text-slate-400">Add Service Fee</span>
+                  <span>₱{parseFloat(serviceFee || "0").toFixed(2)}</span>
+                </div>
+                <div className="h-px bg-white/5 my-2" />
+                <div className="flex justify-between items-end">
+                  <span className="text-xs font-black uppercase tracking-widest text-blue-500">Total to Pay</span>
+                  <span className="text-3xl font-black text-white italic tracking-tighter">₱{numbers.total.toFixed(2)}</span>
+                </div>
               </div>
             </div>
           </div>
-
-          <div className="mt-6 text-sm text-gray-500">
-            Note: Estimates only. For exact promo pricing, check official providers (Globe, Smart, DITO).
-          </div>
-
-          <div className="page-bottom-spacer" />
         </div>
-      </section>
-    </>
+
+        <div className="mt-8 flex items-start gap-3 px-6">
+          <Info size={16} className="text-slate-600 mt-1" />
+          <p className="text-[10px] text-slate-600 font-bold uppercase leading-relaxed tracking-wide">
+            Note: These are estimates for your convenience. Please double-check with your provider for exact promo pricing.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import toast from "react-hot-toast";
-import { db } from "../../firebase/clientApp";
+import { db } from "../../lib/firebase";
 import {
   addDoc,
   collection,
@@ -19,6 +19,7 @@ import { useAuth } from "../../context/AuthContext";
 import ForumLayout from "../../components/Forum/ForumLayout";
 import WidgetCard from "../../components/Forum/WidgetCard";
 import CategoryPill from "../../components/Forum/CategoryPill";
+import { ArrowLeft, Send, Hash, Info } from "lucide-react";
 
 type Thread = { id: string; title: string; replyCount?: number; tags?: string[] };
 
@@ -34,7 +35,6 @@ const CATEGORIES = [
 
 const TITLE_MAX = 120;
 const BODY_MAX  = 20000;
-const TAG_MAX   = 24;
 const TAGS_MAX  = 5;
 const DRAFT_KEY = "pth_forum_draft_new";
 
@@ -44,7 +44,6 @@ function sanitizeTags(input: string): string[] {
     .split(",")
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean)
-    .map((t) => t.slice(0, TAG_MAX))
     .filter((t) => {
       if (seen.has(t)) return false;
       seen.add(t);
@@ -56,79 +55,48 @@ function sanitizeTags(input: string): string[] {
 export default function NewThread() {
   const router = useRouter();
   const { user, profile } = useAuth();
-
   const [busy, setBusy] = useState(false);
   const lastSubmitRef = useRef<number>(0);
 
-  // right rail
   const [featured, setFeatured] = useState<Thread[]>([]);
-  const [recent, setRecent] = useState<Thread[]>([]);
-
-  // form state
   const [category, setCategory] = useState<string>("general");
   const [title, setTitle] = useState("");
   const [body, setBody]   = useState("");
   const [tags, setTags]   = useState("");
 
+  // 1. Fetch Featured for Right Rail
   useEffect(() => {
     (async () => {
-      const featSnap = await getDocs(
-        query(collection(db, "threads"), orderBy("replyCount", "desc"), orderBy("createdAt", "desc"), fsLimit(6))
-      );
-      setFeatured(featSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Thread[]);
-
-      const recSnap = await getDocs(
-        query(collection(db, "threads"), orderBy("createdAt", "desc"), fsLimit(10))
-      );
-      setRecent(recSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Thread[]);
+      const q = query(collection(db, "threads"), orderBy("replyCount", "desc"), fsLimit(6));
+      const snap = await getDocs(q);
+      setFeatured(snap.docs.map(d => ({ id: d.id, ...d.data() })) as any);
     })();
   }, []);
 
-  // autosave draft
+  // 2. Draft Persistence
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(DRAFT_KEY);
-      if (!raw) return;
-      const d = JSON.parse(raw) as { category:string; title:string; body:string; tags:string };
-      setCategory(d.category ?? "general");
-      setTitle(d.title ?? "");
-      setBody(d.body ?? "");
-      setTags(d.tags ?? "");
-    } catch {}
-  }, []);
-  const draft = useMemo(() => ({ category, title, body, tags }), [category, title, body, tags]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    } catch {}
-  }, [draft]);
-
-  async function create(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user) {
-      toast.error("Please sign in to post.");
-      return;
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      setCategory(d.category || "general");
+      setTitle(d.title || "");
+      setBody(d.body || "");
+      setTags(d.tags || "");
     }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ category, title, body, tags }));
+  }, [category, title, body, tags]);
+
+  // 3. Post Thread Logic
+  async function create(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!user || busy) return;
+
     const t = title.trim();
     const b = body.trim();
-    const cleanTags = sanitizeTags(tags);
-
-    if (!t || !b) {
-      toast.error("Please complete the title and content.");
-      return;
-    }
-    if (t.length > TITLE_MAX) {
-      toast.error(`Title is too long (max ${TITLE_MAX} chars).`);
-      return;
-    }
-    if (b.length > BODY_MAX) {
-      toast.error(`Content is too long (max ${BODY_MAX} chars).`);
-      return;
-    }
-
-    const now = Date.now();
-    if (now - lastSubmitRef.current < 600) return;
-    lastSubmitRef.current = now;
+    if (!t || !b) return toast.error("Title and content are required.");
 
     setBusy(true);
     try {
@@ -136,7 +104,7 @@ export default function NewThread() {
         title: t,
         body: b,
         category,
-        tags: cleanTags,
+        tags: sanitizeTags(tags),
         authorId: user.uid,
         authorName: profile?.displayName || user.displayName || "User",
         authorPhoto: profile?.photoURL || user.photoURL || "",
@@ -146,190 +114,150 @@ export default function NewThread() {
         lastReplyAt: serverTimestamp(),
       });
 
-      try { localStorage.removeItem(DRAFT_KEY); } catch {}
-
+      localStorage.removeItem(DRAFT_KEY);
       toast.success("Thread posted!");
       router.push(`/forums/${ref.id}`);
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err?.message || "Failed to post thread.");
-    } finally {
+    } catch (err) {
+      toast.error("Failed to post thread.");
       setBusy(false);
     }
   }
 
-  const titleSEO = "Create a Thread — Forums | Pinoy Tambayan Hub";
-  const descSEO  = "Start a new discussion on Pinoy Tambayan Hub forums.";
-  const urlSEO   = "https://pinoytambayanhub.com/forums/new";
+  // Keyboard Shortcut: Ctrl/Cmd + Enter
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      create();
+    }
+  };
 
-  const titleCount = `${title.length}/${TITLE_MAX}`;
-  const bodyCount  = `${body.length}/${BODY_MAX}`;
   const tagsPreview = sanitizeTags(tags);
 
   return (
-    <>
+    <ForumLayout
+      rightRail={
+        <WidgetCard title="Posting Rules">
+          <ul className="text-xs text-gray-400 space-y-2">
+            <li>• Be respectful to others.</li>
+            <li>• No spam or self-promotion.</li>
+            <li>• Use descriptive titles.</li>
+            <li>• Choose the right category.</li>
+          </ul>
+        </WidgetCard>
+      }
+    >
       <Head>
-        <title>{titleSEO}</title>
-        <meta name="description" content={descSEO} />
-        <link rel="canonical" href={urlSEO} />
-        <meta property="og:title" content={titleSEO} />
-        <meta property="og:description" content={descSEO} />
-        <meta property="og:url" content={urlSEO} />
-        <meta property="og:type" content="website" />
+        <title>Create Thread — Pinoy Tambayan Hub</title>
       </Head>
 
-      <ForumLayout
-        title="Create a Thread"
-        rightRail={
-          <>
-            <WidgetCard title="Featured content">
-              <ul className="space-y-2">
-                {featured.map((t) => (
-                  <li key={t.id} className="flex flex-col gap-1">
-                    <Link href={`/forums/${t.id}`} className="text-sm text-gray-200 hover:text-white">
-                      {t.title}
-                    </Link>
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <CategoryPill cat={(t as any).category} />
-                      <span>{(t.replyCount ?? 0)} {(t.replyCount ?? 0) === 1 ? "reply" : "replies"}</span>
-                    </div>
-                  </li>
-                ))}
-                {featured.length === 0 && <div className="text-sm text-gray-400">No featured threads yet.</div>}
-              </ul>
-            </WidgetCard>
-
-            <WidgetCard title="New Topics">
-              <ul className="space-y-2">
-                {recent.map((t) => (
-                  <li key={t.id} className="flex items-start gap-2">
-                    <span className="mt-0.5 text-xs">🟦</span>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Link href={`/forums/${t.id}`} className="text-sm text-gray-200 hover:text-white truncate">
-                          {t.title}
-                        </Link>
-                        <CategoryPill cat={(t as any).category} />
-                      </div>
-                      <div className="text-[11px] text-gray-500">
-                        {(t.tags || []).slice(0, 2).map((x) => `#${x}`).join(" ")}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-                {recent.length === 0 && <div className="text-sm text-gray-400">No topics yet.</div>}
-              </ul>
-            </WidgetCard>
-          </>
-        }
-      >
-        {/* back */}
-        <div className="flex items-center justify-end">
-          <Link
-            href="/forums"
-            className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-800/60"
-          >
-            ← Back to threads
-          </Link>
+      {/* Header with Back Button */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Create New Topic</h1>
+          <p className="text-sm text-gray-500">Share your thoughts with the community.</p>
         </div>
+        <Link href="/forums" className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
+          <ArrowLeft size={16} /> Back to Feed
+        </Link>
+      </div>
 
-        {/* composer */}
-        <div className="rounded-2xl bg-[#121722] border border-gray-800 p-4">
-          {!user ? (
-            <div className="text-gray-400">
-              You must be signed in to post.{" "}
-              <Link href="/login" className="text-blue-400 underline">Login</Link>
-            </div>
-          ) : (
-            <form onSubmit={create} className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Category</label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    required
-                    className="w-full rounded-xl bg-[#151924] border border-gray-800 px-4 py-3 text-gray-100 outline-none focus:border-blue-500"
-                  >
-                    {CATEGORIES.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+      <div className="bg-[#121722] border border-gray-800 rounded-2xl p-6">
+        {!user ? (
+          <div className="text-center py-12">
+            <Info className="mx-auto text-blue-500 mb-4" size={48} />
+            <p className="text-gray-400">Please <Link href="/login" className="text-blue-400 hover:underline">sign in</Link> to start a discussion.</p>
+          </div>
+        ) : (
+          <form onSubmit={create} onKeyDown={handleKeyDown} className="space-y-6">
+            
+            {/* Category & Tags Row */}
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Category</label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full bg-[#0f141f] border border-gray-800 rounded-xl px-4 py-3 text-gray-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
 
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    Tags (comma-separated, up to {TAGS_MAX})
-                  </label>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+                  Tags <span className="text-[10px] font-normal opacity-60">(comma separated)</span>
+                </label>
+                <div className="relative">
+                  <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
                   <input
                     value={tags}
                     onChange={(e) => setTags(e.target.value)}
-                    placeholder="opm, radio"
-                    className="w-full rounded-xl bg-[#151924] border border-gray-800 px-4 py-3 text-gray-100 outline-none focus:border-blue-500"
+                    placeholder="e.g. tutorial, pinoy, news"
+                    className="w-full bg-[#0f141f] border border-gray-800 rounded-xl py-3 pl-10 pr-4 text-gray-100 focus:border-blue-500 outline-none transition-all"
                   />
-                  {tagsPreview.length > 0 && (
-                    <div className="mt-2 flex gap-2 flex-wrap">
-                      {tagsPreview.map((t) => (
-                        <span
-                          key={t}
-                          className="px-2 py-0.5 rounded-full text-xs bg-gray-800 text-gray-300 border border-gray-700"
-                        >
-                          #{t}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                </div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {tagsPreview.map(t => (
+                    <span key={t} className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded border border-gray-700">#{t}</span>
+                  ))}
                 </div>
               </div>
+            </div>
 
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm text-gray-400 mb-1">Title</label>
-                  <span className="text-xs text-gray-500">{titleCount}</span>
-                </div>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))}
-                  required
-                  maxLength={TITLE_MAX}
-                  placeholder="What do you want to talk about?"
-                  className="w-full rounded-xl bg-[#151924] border border-gray-800 px-4 py-3 text-gray-100 outline-none focus:border-blue-500"
-                />
+            {/* Title */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">Thread Title</label>
+                <span className={`text-[10px] ${title.length > TITLE_MAX * 0.9 ? 'text-red-400' : 'text-gray-600'}`}>
+                  {title.length}/{TITLE_MAX}
+                </span>
               </div>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                maxLength={TITLE_MAX}
+                placeholder="Give your topic a clear, catchy title..."
+                className="w-full bg-[#0f141f] border border-gray-800 rounded-xl px-4 py-3 text-lg font-semibold text-white focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
 
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm text-gray-400 mb-1">Content</label>
-                  <span className="text-xs text-gray-500">{bodyCount}</span>
-                </div>
-                <textarea
-                  value={body}
-                  onChange={(e) => setBody(e.target.value.slice(0, BODY_MAX))}
-                  required
-                  maxLength={BODY_MAX}
-                  rows={10}
-                  placeholder="Write details here…"
-                  className="w-full rounded-xl bg-[#151924] border border-gray-800 px-4 py-3 text-gray-100 outline-none focus:border-blue-500 whitespace-pre-wrap"
-                />
-                <p className="mt-1 text-xs text-gray-500">Tip: links are allowed; HTML is not.</p>
+            {/* Body */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">Content</label>
+                <span className="text-[10px] text-gray-600">{body.length}/{BODY_MAX}</span>
               </div>
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                required
+                rows={12}
+                placeholder="What's on your mind? Be detailed..."
+                className="w-full bg-[#0f141f] border border-gray-800 rounded-xl px-4 py-4 text-gray-200 focus:border-blue-500 outline-none transition-all resize-none leading-relaxed"
+              />
+              <p className="mt-3 text-[11px] text-gray-500 flex items-center gap-1">
+                <Info size={12} /> Markdown links are supported. Avoid posting sensitive personal info.
+              </p>
+            </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Press Ctrl/⌘ + Enter to post</span>
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-5 py-3 font-medium"
-                >
-                  {busy ? "Posting…" : "Post Thread"}
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
-      </ForumLayout>
-    </>
+            {/* Submit Section */}
+            <div className="pt-4 border-t border-gray-800 flex flex-col md:flex-row items-center justify-between gap-4">
+               <p className="text-[11px] text-gray-500 italic">
+                 Your post will be live immediately after clicking post.
+               </p>
+               <button
+                 type="submit"
+                 disabled={busy || !title.trim() || !body.trim()}
+                 className="w-full md:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold px-8 py-3 rounded-xl transition-all shadow-lg shadow-blue-900/20"
+               >
+                 {busy ? "Publishing..." : <><Send size={18} /> Post Thread</>}
+               </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </ForumLayout>
   );
 }

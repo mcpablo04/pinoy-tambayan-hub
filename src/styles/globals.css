@@ -1,110 +1,83 @@
 @import "tailwindcss";
 
-/* 1. MANUALLY DEFINE THE THEME TO PREVENT COMPILER ERRORS */
-:root {
-  --darkbg: #020617;
-  --card: #0f172a;
-  --lighttext: #f8fafc;
-  --primary: #3b82f6;
+@theme {
+  /* Brand Colors */
+  --color-darkbg: #020617;
+  --color-card-bg: #0f172a;
+  --color-primary: #3b82f6;
   
-  /* System colors */
+  /* Animations */
+  --animate-shimmer: shimmer 2s infinite;
+  --animate-music-bar: music-bar 1s ease-in-out infinite;
+
+  @keyframes shimmer {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
+
+  @keyframes music-bar {
+    0%, 100% { height: 4px; }
+    50% { height: 12px; }
+  }
+}
+
+/* 1. CORE RESET */
+:root {
   --background: #020617;
   --foreground: #f8fafc;
 }
 
-/* 2. CORE RESET - FIXES THE "DESTROYED" LAYOUT */
 html, body {
-  background-color: var(--darkbg) !important;
-  color: var(--lighttext) !important;
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
   margin: 0;
   padding: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
-/* 3. WRAP EVERYTHING IN @LAYER TO PREVENT STYLE COLLISION */
+/* 2. CORE COMPONENTS */
 @layer components {
-  
-  /* Layout */
   .container-page {
-    width: 100%;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 1rem;
+    @apply w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
   }
 
-  /* The Bento Card Look */
   .card {
-    background-color: rgba(15, 23, 42, 0.5); /* var(--card) with opacity */
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 1.5rem;
-    padding: 1.5rem;
-  }
-
-  /* Typography */
-  .page-title {
-    font-size: 2.5rem;
-    font-weight: 900;
-    text-transform: uppercase;
-    font-style: italic;
-    letter-spacing: -0.05em;
-    color: white;
-  }
-
-  /* Buttons */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.75rem 1.5rem;
-    border-radius: 1rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.1em;
-    transition: all 0.2s;
-    cursor: pointer;
-    border: none;
-  }
-
-  .btn-primary {
-    background-color: var(--primary);
-    color: white;
-  }
-
-  .btn-ghost {
-    background-color: rgba(255, 255, 255, 0.05);
-    color: #94a3b8;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  /* Form Elements */
-  .input {
-    width: 100%;
-    background-color: #020617;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: white;
-    padding: 1rem;
-    border-radius: 1rem;
-    outline: none;
+    @apply bg-white/[0.03] backdrop-blur-xl border border-white/5 rounded-[2.5rem] p-6 transition-all duration-500;
+    /* Hardware acceleration to prevent corner flickering */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+    overflow: hidden;
   }
   
-  .input:focus {
-    border-color: var(--primary);
+  .card-hover {
+    @apply hover:bg-white/[0.06] hover:border-white/10 hover:shadow-2xl hover:shadow-blue-500/5;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all cursor-pointer active:scale-95 disabled:opacity-50;
+    /* Forces strict rounded clipping */
+    -webkit-mask-image: -webkit-radial-gradient(white, black);
+  }
+
+  .input {
+    @apply w-full bg-[#020617] border border-white/10 text-white px-4 py-3.5 rounded-2xl outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all;
   }
 }
 
-/* 4. UTILITIES */
+/* 3. UTILITIES */
 @layer utilities {
-  .no-scrollbar::-webkit-scrollbar { display: none; }
-  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-  
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 99px;
-    background-color: #22c55e;
-    box-shadow: 0 0 10px #22c55e;
+  /* Fix for the white box/ghost border glitch */
+  .fix-rendering {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transform: translateZ(0);
+    isolation: isolate;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-br from-white via-white/90 to-slate-500;
   }
 }

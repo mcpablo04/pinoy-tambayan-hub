@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/router";
 import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from "firebase/auth";
-import { auth } from "../../firebase/clientApp"; // make sure clientApp exports `auth`
+import { auth } from "../../lib/firebase"; // make sure clientApp exports `auth`
 
 export default function RegisterPage() {
   const router = useRouter();

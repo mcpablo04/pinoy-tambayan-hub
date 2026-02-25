@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { auth } from "../../firebase/clientApp";
+import { auth } from "../../lib/firebase";
 import { onAuthStateChanged, sendEmailVerification, reload } from "firebase/auth";
 
 export default function VerifyPrompt() {

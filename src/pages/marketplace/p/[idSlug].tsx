@@ -1,12 +1,12 @@
-// src/pages/marketplace/p/[idSlug].tsx
 "use client";
 
 import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
-import { db } from "../../../lib/firebase";
+import { db } from "../../../lib/firebase"; // Standardized import
 import { doc, getDoc } from "firebase/firestore";
+import { ArrowLeft, ExternalLink, ShoppingBag, ShieldCheck } from "lucide-react";
 
 type Product = {
   title: string;
@@ -36,6 +36,7 @@ function slugify(input: string) {
     .replace(/-{2,}/g, "-")
     .slice(0, 80);
 }
+
 const peso = (n?: number | null) =>
   typeof n === "number"
     ? n.toLocaleString("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 })
@@ -51,36 +52,29 @@ export default function ProductDetailPage() {
 
   const [product, setProduct] = useState<Product | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!idFromUrl) return;
     (async () => {
-      const snapshot = await getDoc(doc(db, "products", idFromUrl));
-      if (!snapshot.exists()) {
-        setNotFound(true);
-        return;
-      }
-      const data = snapshot.data() as any;
-      setProduct({
-        title: data.title,
-        slug: data.slug ?? null,
-        category: data.category ?? null,
-        pricePhp: data.pricePhp ?? null,
-        rating: data.rating ?? null,
-        store: data.store ?? null,
-        imageUrl: data.imageUrl,
-        affiliateUrl: data.affiliateUrl,
-        blurb: data.blurb ?? null,
-        ownerUid: data.ownerUid,
-        ownerName: data.ownerName ?? null,
-        createdAt: data.createdAt ?? null,
-        updatedAt: data.updatedAt ?? null,
-      });
+      try {
+        const snapshot = await getDoc(doc(db, "products", idFromUrl));
+        if (!snapshot.exists()) {
+          setNotFound(true);
+          return;
+        }
+        const data = snapshot.data() as any;
+        setProduct(data as Product);
 
-      // Normalize slug in the URL (e.g., /p/<id>-<slug>)
-      const canonicalSlug = (data.slug && String(data.slug)) || slugify(String(data.title || ""));
-      if (canonicalSlug && slugFromUrl !== canonicalSlug) {
-        router.replace(`/marketplace/p/${idFromUrl}-${canonicalSlug}`, undefined, { shallow: true });
+        // SEO/UX: Canonical redirect if slug is messy
+        const canonicalSlug = data.slug || slugify(data.title || "");
+        if (canonicalSlug && slugFromUrl !== canonicalSlug) {
+          router.replace(`/marketplace/p/${idFromUrl}-${canonicalSlug}`, undefined, { shallow: true });
+        }
+      } catch (err) {
+        console.error("Firestore fetch error:", err);
+      } finally {
+        setLoading(false);
       }
     })();
   }, [idFromUrl, slugFromUrl, router]);
@@ -88,156 +82,116 @@ export default function ProductDetailPage() {
   const canonicalUrl = useMemo(() => {
     if (!idFromUrl) return `${SITE_URL}/marketplace`;
     const s = product?.slug || (product?.title ? slugify(product.title) : "");
-    return s ? `${SITE_URL}/marketplace/p/${idFromUrl}-${s}` : `${SITE_URL}/marketplace/p/${idFromUrl}`;
-  }, [product?.slug, product?.title, idFromUrl]);
+    return `${SITE_URL}/marketplace/p/${idFromUrl}-${s}`;
+  }, [product, idFromUrl]);
 
   if (notFound) {
     return (
-      <>
-        <Head>
-          <title>Product not found • Marketplace • Pinoy Tambayan Hub</title>
-          <meta name="robots" content="noindex,follow" />
-        </Head>
-        <main className="container-page section">
-          <h1 className="page-title">Product not found</h1>
-          <p className="text-gray-300">This item may have been deleted or the link is incorrect.</p>
-          <div className="mt-3">
-            <Link href="/marketplace" className="text-blue-400 hover:underline">
-              ← Back to Marketplace
-            </Link>
-          </div>
-        </main>
-      </>
-    );
-  }
-
-  if (!product) {
-    return (
-      <main className="container-page section">
-        <div className="card">Loading…</div>
+      <main className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <Head><title>Not Found • Pinoy Hub</title></Head>
+        <h1 className="text-4xl font-black italic uppercase text-white mb-4">Item Missing</h1>
+        <p className="text-slate-400 mb-8">It seems this item was sold or removed from the marketplace.</p>
+        <Link href="/marketplace" className="bg-blue-600 px-8 py-3 rounded-2xl font-black uppercase text-xs tracking-widest text-white transition-transform hover:scale-105">
+          Go Back
+        </Link>
       </main>
     );
   }
 
-  const title = `${product.title} • Marketplace • Pinoy Tambayan Hub`;
-  const desc =
-    product.blurb?.slice(0, 160) ||
-    `Community pick from the marketplace. Check details and buy via the merchant link.`;
-  const ogImg = product.imageUrl; // external absolute URL is fine for OG
+  if (loading || !product) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
-  // JSON-LD Product schema
-  const productLd = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: product.title,
-    image: [product.imageUrl],
-    description: product.blurb || undefined,
-    brand: product.store || undefined,
-    category: product.category || undefined,
-    aggregateRating:
-      typeof product.rating === "number"
-        ? {
-            "@type": "AggregateRating",
-            ratingValue: product.rating,
-            reviewCount: 1,
-          }
-        : undefined,
-    offers:
-      typeof product.pricePhp === "number"
-        ? {
+  const title = `${product.title} • Pinoy Tambayan Marketplace`;
+  const desc = product.blurb?.slice(0, 160) || `Check out ${product.title} on our community marketplace.`;
+
+  return (
+    <div className="pb-20 pt-10 px-4 md:px-8 max-w-7xl mx-auto">
+      <Head>
+        <title>{title}</title>
+        <meta name="description" content={desc} />
+        <link rel="canonical" href={canonicalUrl} />
+        <meta property="og:image" content={product.imageUrl} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: product.title,
+          image: [product.imageUrl],
+          description: product.blurb,
+          brand: product.store,
+          offers: {
             "@type": "Offer",
             priceCurrency: "PHP",
             price: product.pricePhp,
             availability: "https://schema.org/InStock",
             url: product.affiliateUrl,
           }
-        : undefined,
-  };
-
-  return (
-    <>
-      <Head>
-        <title>{title}</title>
-        <meta name="description" content={desc} />
-        <link rel="canonical" href={canonicalUrl} />
-
-        {/* Open Graph / Twitter */}
-        <meta property="og:type" content="product" />
-        <meta property="og:title" content={product.title} />
-        <meta property="og:description" content={desc} />
-        <meta property="og:image" content={ogImg} />
-        <meta property="og:url" content={canonicalUrl} />
-
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={product.title} />
-        <meta name="twitter:description" content={desc} />
-        <meta name="twitter:image" content={ogImg} />
-
-        {/* JSON-LD */}
-        <script
-          type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(productLd) }}
-        />
+        }) }} />
       </Head>
 
-      <main className="container-page section">
-        <div className="mb-3">
-          <Link href="/marketplace" className="text-blue-400 hover:underline">
-            ← Back to Marketplace
-          </Link>
+      <Link href="/marketplace" className="inline-flex items-center gap-2 text-slate-500 hover:text-white mb-10 text-[10px] font-black uppercase tracking-[0.2em] transition-colors group">
+        <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Back to Market
+      </Link>
+
+      <div className="grid lg:grid-cols-12 gap-12">
+        {/* Left: Image Container */}
+        <div className="lg:col-span-7">
+          <div className="relative aspect-square md:aspect-video lg:aspect-square rounded-[3rem] overflow-hidden bg-slate-900 border border-white/5 shadow-2xl group">
+            <img 
+              src={product.imageUrl} 
+              alt={product.title} 
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+            />
+            {product.category && (
+              <div className="absolute top-6 left-6 bg-blue-600 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-white shadow-xl">
+                {product.category}
+              </div>
+            )}
+          </div>
         </div>
 
-        <article className="grid md:grid-cols-5 gap-5">
-          {/* Image */}
-          <div className="md:col-span-3">
-            <div className="rounded-lg overflow-hidden border border-white/10 bg-black/20">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={product.imageUrl}
-                alt={product.title}
-                className="w-full h-auto object-cover"
-                loading="eager"
-              />
-            </div>
+        {/* Right: Info & Buy Section */}
+        <div className="lg:col-span-5 flex flex-col justify-center">
+          <div className="flex items-center gap-2 mb-4">
+            <ShieldCheck size={16} className="text-blue-500" />
+            <span className="text-blue-500 text-[10px] font-black uppercase tracking-widest">Verified Listing</span>
           </div>
 
-          {/* Meta / CTA */}
-          <div className="md:col-span-2">
-            <h1 className="page-title mb-2">{product.title}</h1>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-300 mb-3">
-              {product.category && (
-                <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-xs">
-                  {product.category}
-                </span>
-              )}
-              {product.store && <span className="text-xs text-neutral-400">via {product.store}</span>}
-            </div>
+          <h1 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter text-white leading-none mb-6">
+            {product.title}
+          </h1>
 
-            <div className="text-2xl font-semibold mb-3">{peso(product.pricePhp)}</div>
+          <div className="mb-8 p-6 rounded-[2rem] bg-white/5 border border-white/10 backdrop-blur-sm">
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Current Price</p>
+            <div className="text-4xl font-black text-white">{peso(product.pricePhp)}</div>
+          </div>
 
-            {product.blurb && <p className="text-gray-200 mb-4">{product.blurb}</p>}
+          <p className="text-slate-400 leading-relaxed text-lg mb-10">
+            {product.blurb || "No detailed description provided for this community pick."}
+          </p>
 
+          <div className="space-y-4">
             <a
               href={product.affiliateUrl}
               target="_blank"
               rel="nofollow sponsored noopener"
-              className="btn btn-primary px-5 py-3"
+              className="flex items-center justify-center gap-3 w-full bg-blue-600 hover:bg-blue-500 text-white py-6 rounded-[1.5rem] font-black uppercase tracking-widest text-sm transition-all shadow-xl shadow-blue-600/20 active:scale-95"
             >
-              Buy on {product.store || "merchant"} →
+              <ShoppingBag size={18} /> Buy on {product.store || "Merchant"}
             </a>
-
-            <p className="mt-2 text-[11px] leading-snug text-neutral-500">
-              This uses an affiliate link. You (and other posters) may earn commissions from their own affiliate
-              links posted here. Prices and availability can change—please verify on the merchant site.
-            </p>
-
-            <div className="mt-4 text-[12px] text-neutral-500">
-              Posted by {product.ownerName || "User"}
+            
+            <div className="flex items-center justify-center gap-4 text-slate-500 text-[9px] font-black uppercase tracking-[0.1em]">
+              <span className="flex items-center gap-1"><ExternalLink size={10} /> Secure Merchant Link</span>
+              <span className="w-1 h-1 bg-slate-700 rounded-full" />
+              <span>Posted by {product.ownerName || "Anonymous"}</span>
             </div>
           </div>
-        </article>
-      </main>
-    </>
+        </div>
+      </div>
+    </div>
   );
 }

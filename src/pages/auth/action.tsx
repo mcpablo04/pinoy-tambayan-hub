@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { applyActionCode } from "firebase/auth";
-import { auth } from "../../firebase/clientApp";
+import { auth } from "../../lib/firebase";
 
 export default function AuthActionPage() {
   const router = useRouter();

@@ -7,14 +7,9 @@ import { usePlayer, Station } from "../../context/PlayerContext";
 import { STATIONS } from "../../data/stations";
 import Layout from "../../components/Layout";
 import MetaHead from "../../components/MetaHead";
-import { Share2, Check } from "lucide-react"; // Ensure lucide-react is installed
+import { Share2, Check, Radio, Globe, MapPin, Play, Pause, ExternalLink } from "lucide-react";
 
-/* ===================== Types ===================== */
-type StationEx = {
-  id: string;
-  name: string;
-  logo: string;
-  streamUrl: string;
+type StationEx = Station & {
   description?: string;
   genre?: string;
   city?: string;
@@ -34,27 +29,24 @@ export default function StationDetail({ station }: { station: StationEx }) {
     const genreMatches = pool.filter(
       (s) => (s as any).genre?.toLowerCase() === key
     );
-    return (genreMatches.length ? genreMatches : pool).slice(0, 6);
+    return (genreMatches.length ? genreMatches : pool).slice(0, 5);
   }, [station]);
 
   const handleShare = async () => {
-    const shareData = {
-      title: `${station.name} - Pinoy Tambayan Hub`,
-      text: `Listen to ${station.name} live on Pinoy Tambayan Hub!`,
-      url: window.location.href,
-    };
-
+    const url = typeof window !== "undefined" ? window.location.href : "";
     try {
       if (navigator.share) {
-        await navigator.share(shareData);
+        await navigator.share({
+          title: `${station.name} | Pinoy Hub`,
+          text: `Listening to ${station.name} live!`,
+          url,
+        });
       } else {
-        await navigator.clipboard.writeText(window.location.href);
+        await navigator.clipboard.writeText(url);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }
-    } catch (err) {
-      console.error("Error sharing:", err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const handlePlayAction = () => {
@@ -66,127 +58,126 @@ export default function StationDetail({ station }: { station: StationEx }) {
     setShowUI(true);
   };
 
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "RadioStation",
-    name: station.name,
-    areaServed: station.country || "Philippines",
-    genre: station.genre,
-    url: station.website || "https://pinoytambayanhub.com",
-    logo: station.logo,
-  };
-
   return (
-    <Layout title={`${station.name} - Live Radio`}>
+    <Layout>
       <MetaHead 
-        title={`${station.name} — Listen Live | Pinoy Tambayan Hub`}
-        description={station.description || `Stream ${station.name} live online. Your daily OPM and FM tambayan.`}
+        title={`${station.name} Live — Pinoy Radio Hub`}
+        description={station.description || `Stream ${station.name} live. Your 24/7 Filipino radio tambayan.`}
       />
       
       <Head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "RadioStation",
+          "name": station.name,
+          "url": `https://pinoytambayanhub.com/stations/${station.id}`,
+          "image": station.logo,
+          "address": { "@type": "PostalAddress", "addressLocality": station.city || "Manila", "addressCountry": "PH" }
+        })}} />
       </Head>
 
-      <div className="max-w-6xl mx-auto">
-        {/* BREADCRUMB */}
-        <nav className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-8">
-          <Link href="/radio" className="hover:text-blue-500 transition-colors">Radio</Link>
-          <span>/</span>
-          <span className="text-slate-300">{station.name}</span>
-        </nav>
+      <div className="max-w-6xl mx-auto px-4">
+        {/* TOP NAV */}
+        <div className="flex items-center gap-3 mb-10">
+          <Link href="/radio" className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 hover:text-white transition-colors">Radio Hub</Link>
+          <div className="w-1 h-1 rounded-full bg-slate-800" />
+          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500">{station.name}</span>
+        </div>
 
-        <div className="grid lg:grid-cols-12 gap-12">
-          
-          {/* LEFT: PLAYER CARD */}
-          <div className="lg:col-span-7">
-            <div className="relative group rounded-[3rem] overflow-hidden bg-white/5 border border-white/10 p-8 md:p-12 shadow-2xl backdrop-blur-sm">
-              <div className="absolute -top-24 -right-24 w-64 h-64 bg-blue-600/20 blur-[100px] rounded-full" />
-              
-              <div className="relative z-10 flex flex-col items-center md:items-start md:flex-row gap-8">
-                <div className="w-40 h-40 md:w-52 md:h-52 shrink-0 bg-[#0f172a] rounded-[2.5rem] p-6 border border-white/5 shadow-inner flex items-center justify-center">
-                  <img src={station.logo} alt={station.name} className="w-full h-full object-contain filter drop-shadow-2xl" />
+        <div className="grid lg:grid-cols-12 gap-16">
+          {/* MAIN PLAYER AREA */}
+          <div className="lg:col-span-8">
+            <div className="relative rounded-[4rem] bg-gradient-to-br from-slate-900 to-black border border-white/5 p-8 md:p-16 shadow-2xl overflow-hidden group">
+              {/* Animated Glow Background */}
+              <div className={`absolute -top-24 -right-24 w-96 h-96 transition-all duration-1000 blur-[120px] rounded-full ${isCurrent && isPlaying ? 'bg-blue-600/30 animate-pulse' : 'bg-blue-600/10'}`} />
+
+              <div className="relative z-10 flex flex-col md:flex-row gap-12 items-center text-center md:text-left">
+                {/* Station Logo */}
+                <div className="relative shrink-0">
+                  <div className={`absolute inset-0 blur-2xl rounded-full transition-opacity duration-500 ${isCurrent && isPlaying ? 'bg-blue-500/40 opacity-100' : 'opacity-0'}`} />
+                  <div className="w-48 h-48 md:w-64 md:h-64 bg-slate-950 rounded-[3.5rem] p-10 border border-white/10 shadow-2xl relative flex items-center justify-center">
+                    <img src={station.logo} alt={station.name} className="w-full h-full object-contain filter drop-shadow-[0_0_20px_rgba(255,255,255,0.1)]" />
+                  </div>
                 </div>
 
-                <div className="flex-1 text-center md:text-left">
-                  <span className="text-blue-500 font-black uppercase tracking-[0.3em] text-[10px] bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
-                    Live Broadcast
-                  </span>
-                  <h1 className="text-4xl md:text-6xl font-black text-white italic uppercase tracking-tighter mt-4 mb-2">
+                <div className="flex-1">
+                  <div className="flex flex-wrap justify-center md:justify-start gap-3 mb-6">
+                    <span className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest">
+                      <Radio size={12} className={isCurrent && isPlaying ? "animate-pulse" : ""} /> Live Now
+                    </span>
+                    {station.genre && (
+                      <span className="bg-white/5 text-slate-400 border border-white/10 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest">
+                        {station.genre}
+                      </span>
+                    )}
+                  </div>
+
+                  <h1 className="text-5xl md:text-7xl font-black text-white italic uppercase tracking-tighter leading-[0.9] mb-6">
                     {station.name}
                   </h1>
-                  <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">
-                    {station.genre || "Variety"} • {station.city || "Philippines"}
-                  </p>
 
-                  <div className="mt-8 flex flex-wrap justify-center md:justify-start gap-4">
+                  <div className="flex flex-wrap justify-center md:justify-start items-center gap-6 text-slate-500 text-[10px] font-black uppercase tracking-widest mb-10">
+                    <span className="flex items-center gap-2"><MapPin size={14} className="text-blue-500" /> {station.city || "PH"}</span>
+                    <span className="flex items-center gap-2"><Globe size={14} className="text-blue-500" /> Worldwide</span>
+                  </div>
+
+                  {/* Player Actions */}
+                  <div className="flex flex-wrap justify-center md:justify-start gap-4">
                     <button 
                       onClick={handlePlayAction}
-                      className="bg-white text-blue-950 px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-xl flex items-center gap-3"
+                      className="group relative bg-white text-black px-12 py-5 rounded-3xl font-black uppercase tracking-widest text-[11px] hover:scale-105 transition-all shadow-[0_0_40px_rgba(255,255,255,0.15)] flex items-center gap-4 overflow-hidden"
                     >
-                      {isCurrent && isPlaying ? (
-                         <div className="flex gap-1 items-end h-3">
-                           <div className="w-0.5 bg-blue-900 animate-[bounce_1s_infinite] h-full" />
-                           <div className="w-0.5 bg-blue-900 animate-[bounce_1.2s_infinite] h-2" />
-                           <div className="w-0.5 bg-blue-900 animate-[bounce_0.8s_infinite] h-3" />
-                         </div>
-                      ) : "▶"}
-                      {isCurrent && isPlaying ? "Pause Stream" : "Listen Now"}
+                      {isCurrent && isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                      <span>{isCurrent && isPlaying ? "Pause Stream" : "Start Listening"}</span>
                     </button>
 
                     <button 
                       onClick={handleShare}
-                      className="bg-blue-600/20 border border-blue-500/30 text-blue-400 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-600/30 transition-all flex items-center gap-2"
+                      className="bg-slate-900 border border-white/10 text-white px-8 py-5 rounded-3xl font-black uppercase tracking-widest text-[11px] hover:bg-slate-800 transition-all flex items-center gap-3"
                     >
-                      {copied ? <Check size={16} /> : <Share2 size={16} />}
-                      {copied ? "Link Copied!" : "Share Station"}
+                      {copied ? <Check size={18} className="text-emerald-500" /> : <Share2 size={18} />}
+                      {copied ? "Copied" : "Share"}
                     </button>
-
-                    {station.website && (
-                      <a href={station.website} target="_blank" rel="noopener noreferrer" className="bg-white/5 border border-white/10 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/10 transition-all">
-                        Official Site
-                      </a>
-                    )}
                   </div>
                 </div>
               </div>
 
-              {/* DESCRIPTION BOX */}
-              <div className="mt-12 pt-12 border-t border-white/5">
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-300 mb-4">About the Station</h3>
-                <p className="text-slate-400 leading-relaxed font-medium italic">
-                  {station.description || "Pinoy Tambayan Hub brings you the best live streams from the Philippines and beyond."}
+              {/* DESCRIPTION SECTION */}
+              <div className="mt-16 pt-12 border-t border-white/5">
+                <p className="text-slate-400 text-lg font-medium leading-relaxed italic max-w-2xl">
+                  "{station.description || `The ultimate online portal for ${station.name}. Stream your favorite local hits and global favorites anywhere in the world.`}"
                 </p>
+                {station.website && (
+                  <a href={station.website} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-8 text-blue-500 hover:text-white transition-colors text-[10px] font-black uppercase tracking-[0.2em]">
+                    Visit Official Site <ExternalLink size={14} />
+                  </a>
+                )}
               </div>
             </div>
 
-            {/* DISCLAIMER */}
-            <div className="mt-6 p-6 rounded-3xl bg-blue-500/5 border border-blue-500/10 text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-loose">
-              Notice: We do not host these streams. All content is provided by official broadcasters.
+            <div className="mt-8 flex items-center gap-4 px-10 py-6 rounded-[2rem] bg-blue-600/5 border border-blue-600/10">
+              <div className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">
+                Low Latency Stream optimized for 5G/LTE connections.
+              </p>
             </div>
           </div>
 
-          {/* RIGHT: SIDEBAR */}
-          <div className="lg:col-span-5 space-y-8">
-            <h2 className="text-2xl font-black uppercase tracking-tighter italic text-white">Related Stations</h2>
-            <div className="grid grid-cols-1 gap-4">
+          {/* SIDEBAR: RELATED */}
+          <div className="lg:col-span-4">
+            <h2 className="text-2xl font-black italic uppercase tracking-tighter text-white mb-8">Related Tuner</h2>
+            <div className="space-y-4">
               {related.map((s) => (
-                <Link 
-                  key={s.id} 
-                  href={`/stations/${s.id}`}
-                  className="group flex items-center gap-4 bg-white/5 border border-white/5 p-4 rounded-3xl hover:bg-white/10 hover:border-blue-500/30 transition-all"
-                >
-                  <div className="w-16 h-16 shrink-0 bg-[#0f172a] rounded-2xl p-3 border border-white/5 flex items-center justify-center">
-                    <img src={s.logo} alt={s.name} className="w-full h-full object-contain group-hover:scale-110 transition-transform" />
+                <Link key={s.id} href={`/stations/${s.id}`} className="flex items-center gap-5 p-5 rounded-3xl bg-white/5 border border-white/5 hover:border-blue-500/40 hover:bg-white/10 transition-all group">
+                  <div className="w-16 h-16 bg-slate-950 rounded-2xl p-3 border border-white/5 overflow-hidden">
+                    <img src={s.logo} alt={s.name} className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-black text-white uppercase tracking-tight truncate">{s.name}</h4>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">{(s as any).genre || "Radio"}</p>
+                    <h4 className="text-sm font-black text-white uppercase tracking-tight truncate">{s.name}</h4>
+                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-1">{(s as any).genre || "Mix Radio"}</p>
                   </div>
-                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[10px] group-hover:bg-blue-600 transition-colors">
-                    →
+                  <div className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0">
+                    <Play size={14} className="text-blue-500 fill-current" />
                   </div>
                 </Link>
               ))}

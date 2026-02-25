@@ -1,17 +1,15 @@
 // src/pages/api/ph-alerts.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 
-type Alerts = {
+export type Alerts = {
   hasStormInPAR: boolean;
-  stormName?: string;   // PAGASA name (e.g., EGAY)
-  category?: string;    // Typhoon / Severe Tropical Storm / Tropical Storm / Tropical Depression
+  stormName?: string;   // PAGASA name (e.g., AGATON, EGAY)
+  category?: string;    // Typhoon / Severe Tropical Storm, etc.
   bulletinUrl?: string;
-
   hasLPA: boolean;
-  lpaText?: string;     // small snippet mentioning LPA
+  lpaText?: string;     // Context snippet for Low Pressure Area
   advisoryUrl?: string;
-
-  fetchedAt: string;    // ISO
+  fetchedAt: string;    // ISO Timestamp
 };
 
 type StormDetect = {
@@ -28,19 +26,21 @@ type LpaDetect = {
 const STORM_URL = "https://bagong.pagasa.dost.gov.ph/tropical-cyclone/severe-weather-bulletin";
 const ADVISORY_URL = "https://bagong.pagasa.dost.gov.ph/weather/advisories";
 
-// ------------ fetch helper ------------
+/* ===================== FETCH HELPER ===================== */
 async function fetchText(url: string): Promise<string> {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 12000);
+  const timeout = setTimeout(() => ctrl.abort(), 12000);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
-      headers: { "User-Agent": "PinoyTambayanHub/1.0 (+https://pinoy-tambayan.example)" },
+      headers: { 
+        "User-Agent": "PinoyTambayanHub/1.0 (+https://pinoy-tambayan-hub.vercel.app)" 
+      },
     });
     if (!res.ok) throw new Error(`Fetch failed ${res.status}`);
     return await res.text();
   } finally {
-    clearTimeout(t);
+    clearTimeout(timeout);
   }
 }
 
@@ -48,7 +48,7 @@ function squish(html: string) {
   return html.replace(/\s+/g, " ");
 }
 
-// ------------ extraction utils ------------
+/* ===================== EXTRACTION UTILS ===================== */
 const CAT_LIST = [
   "Super Typhoon",
   "Typhoon",
@@ -59,65 +59,50 @@ const CAT_LIST = [
 
 const catRegex = new RegExp(`\\b(${CAT_LIST.join("|")})\\b`, "i");
 
-/**
- * Name patterns to catch variants like:
- *   - TYPHOON EGAY
- *   - SEVERE TROPICAL STORM GORING
- *   - TROPICAL DEPRESSION AMANG (formerly something)
- *   - Typhoon EGAY (INTERNATIONAL NAME: DOKSURI)
- * This allows ALL CAPS names (A–Z, Ñ), and possible multi-word names.
- */
 const nameAfterCatRegex =
   /\b(?:Super Typhoon|Typhoon|Severe Tropical Storm|Tropical Storm|Tropical Depression)\s+([A-ZÑ]{3,}(?:\s+[A-ZÑ]{2,})*)\b/;
 
-/** Try to read name from <title> or og:title too. */
 const ogTitleRegex = /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i;
 const titleTagRegex = /<title[^>]*>([^<]+)<\/title>/i;
-/** Headings occasionally include the formatted “Typhoon EGAY” text */
 const headingRegex = /<(?:h1|h2|h3)[^>]*>(.*?)<\/(?:h1|h2|h3)>/gi;
 
-/** Clean up extracted name: strip trailing punctuation, parenthetical notes, keep CAPS. */
 function normalizeName(raw?: string): string | undefined {
   if (!raw) return undefined;
   let n = raw
-    .replace(/\(.*?\)/g, " ")       // remove parenthetical notes
-    .replace(/[^\wÑ\s-]/gi, " ")    // strip punctuation (keep dash)
-    .replace(/\s+/g, " ")           // dedupe spaces
+    .replace(/\(.*?\)/g, " ")      
+    .replace(/[^\wÑ\s-]/gi, " ")   
+    .replace(/\s+/g, " ")          
     .trim();
 
-  // If name is mixed case (e.g., "Egay"), uppercase it for consistency
   if (/[a-z]/.test(n)) n = n.toUpperCase();
-  // Avoid capturing the category words themselves as name
+  
+  // Guard: Avoid common false positives
   if (CAT_LIST.some((c) => new RegExp("^" + c + "$", "i").test(n))) return undefined;
-  // Don’t return obviously generic words
-  if (/BULLETIN|ADVISORY|SEVERE|TROPICAL|TYPHOON|DEPRESSION|STORM/i.test(n)) {
-    // likely not a pure name
+  if (/BULLETIN|ADVISORY|SEVERE|TROPICAL|TYPHOON|DEPRESSION|STORM|WEATHER/i.test(n)) {
     return undefined;
   }
-  // If name contains spaces and is too long, bail
   if (n.split(" ").length > 3) return undefined;
 
   return n || undefined;
 }
 
-/** Extract the most likely storm name from various places */
 function extractName(html: string): string | undefined {
   // 1) Category + NAME pattern
   const m1 = html.match(nameAfterCatRegex);
   const n1 = normalizeName(m1?.[1]);
   if (n1) return n1;
 
-  // 2) og:title
+  // 2) og:title metadata
   const m2 = html.match(ogTitleRegex);
   const n2 = normalizeName(m2?.[1]?.match(nameAfterCatRegex)?.[1] || m2?.[1]);
   if (n2) return n2;
 
-  // 3) <title>
+  // 3) Standard title tag
   const m3 = html.match(titleTagRegex);
   const n3 = normalizeName(m3?.[1]?.match(nameAfterCatRegex)?.[1] || m3?.[1]);
   if (n3) return n3;
 
-  // 4) Headings
+  // 4) Main headings
   let m: RegExpExecArray | null;
   while ((m = headingRegex.exec(html))) {
     const text = squish(m[1]);
@@ -128,42 +113,35 @@ function extractName(html: string): string | undefined {
   return undefined;
 }
 
-/** Determine if text says inside/within/outside PAR */
 function detectPARState(html: string) {
-  const hasPARWord = /\b(?:Philippine\s+Area\s+of\s+Responsibility|PAR)\b/i.test(html);
-  const saysInside = /\b(?:inside|within|entered|inside\s+the)\b.*\b(?:PAR)\b/i.test(html);
-  const saysOutside = /\b(?:outside|remains\s+outside|outside\s+the)\b.*\b(?:PAR)\b/i.test(html);
+  const saysInside = /\b(?:inside|within|entered|inside\s+the)\b.*\b(?:PAR|Philippine\s+Area\s+of\s+Responsibility)\b/i.test(html);
+  const saysOutside = /\b(?:outside|remains\s+outside|outside\s+the)\b.*\b(?:PAR|Philippine\s+Area\s+of\s+Responsibility)\b/i.test(html);
 
-  let inPAR = false;
-  if (saysInside) inPAR = true;
-  else if (saysOutside) inPAR = false;
-  else if (hasPARWord) {
-    // If only PAR is mentioned without clarity, keep as “unknown” (false) and let UI link to bulletin.
-    inPAR = false;
-  }
-  return inPAR;
+  if (saysInside) return true;
+  if (saysOutside) return false;
+  
+  // Fallback: If "inside" isn't explicitly mentioned, but a storm name is active, 
+  // PAGASA bulletins usually imply it is currently a threat to PAR.
+  return /\b(?:PAR|Philippine\s+Area\s+of\s+Responsibility)\b/i.test(html);
 }
 
-// ------------ Storm detection ------------
+/* ===================== DETECTION LOGIC ===================== */
 function detectStormInPAR(htmlRaw: string): StormDetect {
   const html = squish(htmlRaw);
-
   const catMatch = html.match(catRegex);
   const stormName = extractName(html);
   const inPAR = detectPARState(html);
 
   if (catMatch || stormName) {
     return {
-      hasStormInPAR: !!inPAR, // only true if text suggests inside/within PAR
+      hasStormInPAR: !!inPAR, 
       category: catMatch?.[1],
       stormName: stormName,
     };
   }
-
   return { hasStormInPAR: false };
 }
 
-// ------------ LPA detection ------------
 function detectLPA(htmlRaw: string): LpaDetect {
   const html = squish(htmlRaw);
   const lpaIdx = html.search(/Low\s*Pressure\s*Area/i);
@@ -176,13 +154,13 @@ function detectLPA(htmlRaw: string): LpaDetect {
   return { hasLPA: true, lpaText: snippet };
 }
 
-// ------------ API route ------------
+/* ===================== API HANDLER ===================== */
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Alerts | { error: string }>
 ) {
   try {
-    // Cache at the edge for 10 minutes, allow stale for 30 min
+    // Shared Edge Cache: 10 mins fresh, 30 mins stale
     res.setHeader("Cache-Control", "s-maxage=600, stale-while-revalidate=1800");
 
     const [stormHtml, advHtml] = await Promise.all([
@@ -206,7 +184,7 @@ export default async function handler(
       fetchedAt: new Date().toISOString(),
     });
   } catch (e: any) {
-    // Soft‑fail so the UI still renders
+    // Standard fail-safe: return empty alerts instead of a 500 error
     res.status(200).json({
       hasStormInPAR: false,
       hasLPA: false,

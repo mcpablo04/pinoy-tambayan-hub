@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   images: {
     remotePatterns: [
-      // existing allowlist
+      // Radio & Media Assets
       { protocol: "https", hostname: "static.mytuner.mobi" },
       { protocol: "https", hostname: "static2.mytuner.mobi" },
       { protocol: "https", hostname: "i.imgur.com" },
@@ -17,16 +17,32 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "stream-172.zeno.fm" },
       { protocol: "https", hostname: "a4.asurahosting.com" },
 
-      // ✅ Vercel Blob avatars (project-specific subdomain)
-      // Matches: {project-id}.public.blob.vercel-storage.com/avatars/...
+      // ✅ Google Profile Pictures (Fixes your current error)
+      {
+        protocol: "https",
+        hostname: "lh3.googleusercontent.com",
+        pathname: "/**",
+      },
+      // Some Google accounts use different numbered subdomains (lh4, lh5, etc.)
+      {
+        protocol: "https",
+        hostname: "*.googleusercontent.com",
+        pathname: "/**",
+      },
+
+      // ✅ Vercel Blob avatars
       {
         protocol: "https",
         hostname: "**.public.blob.vercel-storage.com",
         pathname: "/avatars/**",
       },
-      // (optional) Google photos/common CDN sources you might use later:
-      // { protocol: "https", hostname: "lh3.googleusercontent.com" },
-      // { protocol: "https", hostname: "avatars.githubusercontent.com" },
+
+      // ✅ GitHub Avatars (Handy if you add GitHub Login later)
+      { 
+        protocol: "https", 
+        hostname: "avatars.githubusercontent.com",
+        pathname: "/**",
+      },
     ],
   },
 };

@@ -1,8 +1,7 @@
-// src/pages/stories/new.tsx
 "use client";
 
 import Head from "next/head";
-import { FormEvent, useEffect, useState, useMemo } from "react";
+import { FormEvent, useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 import {
   addDoc,
@@ -11,8 +10,9 @@ import {
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
-import { db } from "../../firebase/clientApp";
+import { db } from "../../lib/firebase";
 import { useAuth, type Profile } from "../../context/AuthContext";
+import { PenLine, Tag, Trash2, Send, XCircle, Info } from "lucide-react";
 
 const slugify = (s: string) =>
   s
@@ -25,6 +25,7 @@ const slugify = (s: string) =>
 export default function NewStory() {
   const router = useRouter();
   const { user, profile } = useAuth();
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState("");
@@ -32,54 +33,37 @@ export default function NewStory() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Always land at the top when this page mounts
   useEffect(() => {
-    if ("scrollRestoration" in window.history) {
-      window.history.scrollRestoration = "manual";
-    }
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
+    window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
-  // Simple local draft (autosave)
-  const draftKey = user?.uid
-    ? `pthub:draft:story:${user.uid}`
-    : "pthub:draft:story:anon";
+  const draftKey = user?.uid ? `pthub:draft:${user.uid}` : "pthub:draft:anon";
 
+  // Load Draft
   useEffect(() => {
     try {
       const raw = localStorage.getItem(draftKey);
-      if (!raw) return;
-      const d = JSON.parse(raw) as { title?: string; tags?: string; body?: string };
-      if (d.title) setTitle(d.title);
-      if (d.tags) setTags(d.tags);
-      if (d.body) setBody(d.body);
-    } catch {
-      /* ignore */
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (d.title) setTitle(d.title);
+        if (d.tags) setTags(d.tags);
+        if (d.body) setBody(d.body);
+      }
+    } catch (e) {
+      console.error("Draft load failed", e);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
 
+  // Save Draft
   useEffect(() => {
-    try {
-      const payload = JSON.stringify({ title, tags, body });
-      localStorage.setItem(draftKey, payload);
-    } catch {
-      /* ignore */
-    }
+    const timeout = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({ title, tags, body }));
+      } catch (e) {}
+    }, 1000); // Debounced save
+    return () => clearTimeout(timeout);
   }, [title, tags, body, draftKey]);
 
-  const clearDraft = () => {
-    try {
-      localStorage.removeItem(draftKey);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  // Live-parse tags
   const liveTagList = useMemo(() => {
     return Array.from(
       new Set(
@@ -91,211 +75,211 @@ export default function NewStory() {
     ).slice(0, 10);
   }, [tags]);
 
+  const wordCount = useMemo(() => {
+    return body.trim() ? body.trim().split(/\s+/).length : 0;
+  }, [body]);
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
 
     if (!user?.uid) {
-      setError("Please log in to write a story.");
+      setError("You must be logged in to publish.");
       return;
     }
-    if (!title.trim() || !body.trim()) {
-      setError("Title and content are required.");
+
+    // Validation to match your Rule 'short' function (size > 0 and < max)
+    if (title.trim().length < 3) {
+      setError("Title is too short.");
+      return;
+    }
+    if (body.trim().length < 10) {
+      setError("Story body is too short.");
       return;
     }
 
     setSaving(true);
-    try {
-      const tagList = liveTagList;
-      const p: Profile | null = profile ?? null;
 
-      const base = {
+    try {
+      // 1. Construct payload to match Firestore 'hasOnly' keys exactly
+      const payload = {
         authorId: user.uid,
-        authorName: p?.displayName ?? user.displayName ?? "Anonymous",
-        authorHandle: p?.handle ?? null,
+        authorName: profile?.displayName ?? user.displayName ?? "Anonymous",
+        authorHandle: profile?.handle ?? null,
         title: title.trim(),
-        slug: "",
-        tags: tagList,
-        coverUrl: null,
-        content: { type: "single", body },
-        counts: { reactions: 0, comments: 0, reads: 0 },
+        slug: "draft-slug", // Placeholder: size > 0 to pass 'short' rule
+        tags: liveTagList,
+        coverUrl: null, // Explicitly required by your hasOnly rule
+        content: {
+          type: "single",
+          body: body.trim(),
+        },
+        counts: {
+          reactions: 0,
+          comments: 0,
+          reads: 0,
+        },
         status: "published",
         visibility: "public",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
-      const ref = await addDoc(collection(db, "stories"), base);
+      // Step 1: Create the document
+      const ref = await addDoc(collection(db, "stories"), payload);
+
+      // Step 2: Update with the final unique slug
       const finalSlug = `${slugify(title)}-${ref.id}`;
       await updateDoc(doc(db, "stories", ref.id), {
         slug: finalSlug,
         updatedAt: serverTimestamp(),
       });
 
-      clearDraft();
+      // Cleanup
+      localStorage.removeItem(draftKey);
       router.push(`/stories/${finalSlug}`);
     } catch (err: any) {
-      console.error(err);
-      setError(err?.message ?? "Failed to save story.");
-    } finally {
+      console.error("Submission error:", err);
+      // Handles permission-denied or network errors
+      setError(err?.message ?? "Failed to publish. Please check your connection.");
       setSaving(false);
     }
   };
 
-  const titleCount = `${title.length}/120`;
-  const bodyCount = `${body.length}/50000`;
-
   return (
     <>
-      {/* SEO (form page — keep out of index) */}
       <Head>
-        <title>Write a Story | Pinoy Tambayan Hub</title>
-        <meta
-          name="description"
-          content="Write and publish your Pinoy story — add a title, tags, and content, then share it with the community."
-        />
-        <link rel="canonical" href="https://pinoytambayanhub.com/stories/new" />
+        <title>Create New Story | Pinoy Tambayan Hub</title>
         <meta name="robots" content="noindex, nofollow" />
-        <meta property="og:title" content="Write a Story" />
-        <meta
-          property="og:description"
-          content="Publish your Pinoy story with tags so readers can discover it."
-        />
-        <meta property="og:image" content="/brand/og-cover.png" />
-        <meta property="og:type" content="website" />
-        <meta name="twitter:card" content="summary_large_image" />
       </Head>
 
-      <section className="section">
-        <div className="container-page max-w-3xl">
-          <h1 className="page-title">Write a Story</h1>
+      <section className="section pb-24">
+        <div className="container-page max-w-4xl">
+          <header className="mb-8">
+            <h1 className="text-4xl font-black text-white italic uppercase tracking-tighter flex items-center gap-3">
+              <PenLine className="text-blue-500" /> New Story
+            </h1>
+            <p className="text-gray-400 mt-2">
+              Share your thoughts, drama, or romance with the community.
+            </p>
+          </header>
 
           {error && (
-            <div
-              role="alert"
-              aria-live="assertive"
-              className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2"
-            >
-              {error}
+            <div className="mb-6 flex items-center gap-3 bg-red-500/10 border border-red-500/20 text-red-200 px-4 py-3 rounded-2xl animate-in fade-in slide-in-from-top-2">
+              <XCircle size={18} />
+              <p className="text-sm font-medium">{error}</p>
             </div>
           )}
 
-          <form onSubmit={onSubmit} className="grid gap-4">
-            {/* Title */}
-            <div>
-              <label htmlFor="story-title" className="block text-sm text-gray-300 mb-1">
-                Title
-              </label>
-              <div className="relative">
-                <input
-                  id="story-title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="input !bg-white/5 !border !border-white/10"
-                  placeholder="e.g., Sa Kanto ng 7/11"
-                  maxLength={120}
-                  required
-                  aria-required="true"
-                  autoComplete="off"
-                />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                  {titleCount}
-                </span>
-              </div>
-            </div>
-
-            {/* Tags */}
-            <div>
-              <label htmlFor="story-tags" className="block text-sm text-gray-300 mb-1">
-                Tags (comma-separated)
+          <form onSubmit={onSubmit} className="space-y-6">
+            {/* Title Input */}
+            <div className="group">
+              <label className="text-xs font-black uppercase tracking-widest text-gray-500 group-focus-within:text-blue-500 transition-colors mb-2 block">
+                Story Title
               </label>
               <input
-                id="story-tags"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                className="input !bg-white/5 !border !border-white/10"
-                placeholder="romance, comedy, one-shot"
-                autoComplete="off"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Name your masterpiece..."
+                className="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-4 text-xl font-bold text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                maxLength={120}
+                required
               />
-              {liveTagList.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {liveTagList.map((t) => (
-                    <span
-                      key={t}
-                      className="text-xs px-2 py-1 rounded-full bg-white/10 text-gray-200"
-                      title={`#${t}`}
-                    >
-                      #{t}
-                    </span>
-                  ))}
-                  <span className="text-xs text-gray-400">
-                    {liveTagList.length}/10
-                  </span>
-                </div>
-              )}
-              <p className="mt-1 text-xs text-gray-400">
-                Up to 10 tags. Only letters, numbers, underscores, and hyphens are saved.
-              </p>
             </div>
 
-            {/* Content */}
+            {/* Tags Input */}
             <div>
-              <label htmlFor="story-body" className="block text-sm text-gray-300 mb-1">
-                Content
+              <label className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2 block flex items-center gap-2">
+                <Tag size={14} /> Tags (Comma separated)
               </label>
-              <div className="relative">
-                <textarea
-                  id="story-body"
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  className="w-full min-h-[300px] rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Start your story…"
-                  maxLength={50000}
-                  required
-                  aria-required="true"
-                />
-                <div className="mt-1 text-xs text-gray-400 flex items-center justify-between">
-                  <span>Tip: Paste from any editor. Chapters coming soon.</span>
-                  <span>{bodyCount}</span>
-                </div>
+              <input
+                type="text"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="romance, drama, one-shot..."
+                className="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-3 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+              />
+              <div className="mt-3 flex flex-wrap gap-2 min-h-[32px]">
+                {liveTagList.map((t) => (
+                  <span
+                    key={t}
+                    className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-bold border border-blue-500/20"
+                  >
+                    #{t}
+                  </span>
+                ))}
+                {liveTagList.length === 0 && (
+                  <span className="text-xs text-gray-600 italic">
+                    No tags added yet...
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="btn btn-primary disabled:opacity-60"
-              >
-                {saving ? "Publishing…" : "Publish"}
-              </button>
+            {/* Body Editor */}
+            <div className="relative">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-black uppercase tracking-widest text-gray-500">
+                  The Story
+                </label>
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold bg-white/5 px-2 py-0.5 rounded">
+                    {wordCount} words
+                  </span>
+                </div>
+              </div>
+              <textarea
+                ref={bodyRef}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Once upon a time in Manila..."
+                className="w-full min-h-[450px] bg-white/[0.03] border border-white/10 rounded-3xl px-6 py-6 text-lg leading-relaxed text-gray-200 placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all resize-none"
+                required
+              />
+              <div className="absolute bottom-4 right-6 text-[10px] text-gray-600 font-bold uppercase tracking-widest pointer-events-none">
+                {body.length.toLocaleString()} / 50,000
+              </div>
+            </div>
 
-              <button
-                type="button"
-                onClick={() => router.push("/stories")}
-                className="btn btn-ghost"
-              >
-                Cancel
-              </button>
+            {/* Bottom Actions */}
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-6 border-t border-white/5">
+              <div className="flex items-center gap-2 text-gray-500 text-xs italic">
+                <Info size={14} />
+                <span>Auto-saved to your browser.</span>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setTitle("");
-                  setTags("");
-                  setBody("");
-                  clearDraft();
-                }}
-                className="btn px-4 py-2 bg-gray-700 text-gray-100 hover:bg-gray-600"
-                title="Remove locally saved draft"
-              >
-                Clear draft
-              </button>
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("Clear your draft? This cannot be undone.")) {
+                      setTitle("");
+                      setTags("");
+                      setBody("");
+                      localStorage.removeItem(draftKey);
+                    }
+                  }}
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-2xl border border-white/10 text-gray-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-all"
+                >
+                  <Trash2 size={18} />{" "}
+                  <span className="md:hidden lg:inline">Clear</span>
+                </button>
 
-              <span className="text-gray-400 text-sm sm:ml-auto">
-                Draft autosaves locally.
-              </span>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-[2] md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-10 py-3 rounded-2xl font-black uppercase tracking-tighter transition-all hover:scale-105 active:scale-95 disabled:opacity-50 shadow-xl shadow-blue-600/20"
+                >
+                  {saving ? (
+                    "Publishing..."
+                  ) : (
+                    <>
+                      <Send size={18} /> Publish Story
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </form>
         </div>
