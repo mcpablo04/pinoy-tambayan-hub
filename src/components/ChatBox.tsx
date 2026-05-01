@@ -38,7 +38,6 @@ export default function ChatBox() {
     [profile?.displayName, user?.displayName]
   );
 
-  // Smooth scroll to bottom
   const scrollToBottom = () => {
     if (listRef.current) {
       listRef.current.scrollTo({
@@ -69,7 +68,6 @@ export default function ChatBox() {
         });
       });
       setMessages(list);
-      // Timeout ensures the DOM has rendered the new message before scrolling
       setTimeout(scrollToBottom, 100);
     });
 
@@ -81,7 +79,7 @@ export default function ChatBox() {
     if (!user || !displayName || !text.trim()) return;
 
     const messageContent = text.trim();
-    setText(""); // Optimistic clear
+    setText("");
 
     try {
       await addDoc(collection(db, "messages"), {
@@ -93,14 +91,14 @@ export default function ChatBox() {
       });
     } catch (error: any) {
       setErr("Message failed to send.");
-      setText(messageContent); // Restore text on failure
+      setText(messageContent);
     }
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0b0f1a]/50 backdrop-blur-md overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+    <div className="flex flex-col h-full bg-[#0b0f1a]/50 backdrop-blur-md overflow-hidden rounded-[2.5rem]">
+      {/* Polished Header: Added rounded-t-[2.5rem] to match parent */}
+      <div className="p-5 border-b border-white/5 bg-white/[0.04] flex items-center justify-between rounded-t-[2.5rem]">
         <div className="flex items-center gap-2">
           <div className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
@@ -113,40 +111,40 @@ export default function ChatBox() {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages: Added extra padding-right to avoid scrollbar clashing with curves */}
       <div 
         ref={listRef}
-        className="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-hide scroll-smooth"
+        className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide scroll-smooth"
       >
         {messages.map((m) => {
           const isMe = m.uid === user?.uid;
           return (
             <div key={m.id} className="group flex gap-3 animate-in fade-in slide-in-from-bottom-1 duration-500">
               <div className="shrink-0 pt-0.5">
-                <div className="relative w-8 h-8 rounded-xl overflow-hidden border border-white/10 bg-slate-800">
+                <div className="relative w-9 h-9 rounded-xl overflow-hidden border border-white/10 bg-slate-800 shadow-inner">
                   {m.photoURL ? (
                     <Image 
                       src={m.photoURL} 
                       alt={m.name}
                       fill
-                      sizes="32px"
+                      sizes="36px"
                       className="object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[10px] font-black text-blue-400 bg-blue-500/10">
+                    <div className="w-full h-full flex items-center justify-center text-[11px] font-black text-blue-400 bg-blue-500/10">
                       {m.name.charAt(0).toUpperCase()}
                     </div>
                   )}
                 </div>
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-[11px] font-bold tracking-wide ${isMe ? 'text-blue-400' : 'text-slate-400'}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={`text-[11px] font-black tracking-wide ${isMe ? 'text-blue-400' : 'text-slate-400'}`}>
                     {m.name}
                   </span>
                   {isMe && <Sparkles size={10} className="text-blue-500" />}
                 </div>
-                <div className="bg-white/[0.03] border border-white/[0.05] rounded-2xl rounded-tl-none p-3 inline-block max-w-full group-hover:bg-white/[0.05] transition-colors">
+                <div className="bg-white/[0.03] border border-white/[0.05] rounded-2xl rounded-tl-none p-3.5 inline-block max-w-full group-hover:bg-white/[0.05] transition-colors shadow-sm">
                   <p className="text-sm text-slate-300 leading-relaxed break-words whitespace-pre-wrap">
                     {m.text}
                   </p>
@@ -157,8 +155,8 @@ export default function ChatBox() {
         })}
       </div>
 
-      {/* Input */}
-      <div className="p-4 bg-slate-900/60 border-t border-white/5">
+      {/* Polished Footer: Added rounded-b-[2.5rem] to match parent */}
+      <div className="p-5 bg-slate-900/40 border-t border-white/5 rounded-b-[2.5rem]">
         {!user ? (
           <div className="py-4 px-6 rounded-2xl bg-blue-600/5 border border-blue-500/10 text-center">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500/60 mb-3">Sign in to join the chat</p>

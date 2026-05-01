@@ -13,7 +13,7 @@ type ConfirmOptions = {
 
 /**
  * Premium 2026 async confirmation toast.
- * const ok = await confirmToast({ title: "Delete Post?", variant: "destructive" });
+ * Usage: const ok = await confirmToast({ title: "Delete Post?", variant: "destructive" });
  */
 export function confirmToast({
   title = "Are you sure?",
@@ -24,6 +24,23 @@ export function confirmToast({
 }: ConfirmOptions = {}): Promise<boolean> {
   return new Promise((resolve) => {
     const id = `confirm-${Math.random().toString(36).slice(2)}`;
+
+    // Unified cleanup and resolution
+    const close = (value: boolean) => {
+      toast.dismiss(id);
+      window.removeEventListener("keydown", onKey);
+      resolve(value);
+    };
+
+    // Keyboard handler for Escape key
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        close(false);
+      }
+    };
+
+    // Attach listener
+    window.addEventListener("keydown", onKey);
 
     toast.custom(
       (t) => (
@@ -58,19 +75,13 @@ export function confirmToast({
 
           <div className="mt-6 flex items-center justify-end gap-3">
             <button
-              onClick={() => {
-                toast.dismiss(t.id);
-                resolve(false);
-              }}
-              className="btn btn-ghost !px-4 !py-2 !rounded-xl text-[9px]"
+              onClick={() => close(false)}
+              className="btn btn-ghost !px-4 !py-2 !rounded-xl text-[9px] text-slate-400 hover:text-white"
             >
               {cancelText}
             </button>
             <button
-              onClick={() => {
-                toast.dismiss(t.id);
-                resolve(true);
-              }}
+              onClick={() => close(true)}
               className={`
                 btn !px-4 !py-2 !rounded-xl text-[9px] shadow-lg
                 ${variant === "destructive" 
@@ -86,17 +97,8 @@ export function confirmToast({
       {
         id,
         duration: Infinity,
-        position: "top-center", // Better visibility for confirmations
+        position: "top-center",
       }
     );
-
-    // ESC to Close
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        toast.dismiss(id);
-        resolve(false);
-      }
-    };
-    window.addEventListener("keydown", onKey, { once: true });
   });
 }

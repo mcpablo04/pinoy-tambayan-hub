@@ -10,6 +10,7 @@ import {
   limit as fsLimit,
   orderBy,
   query,
+  where, // Added for filtering
   startAfter,
   endBefore,
   limitToLast,
@@ -30,6 +31,8 @@ type Story = {
   tags?: string[];
   counts?: { reactions: number; comments: number; reads: number };
   createdAt?: Timestamp;
+  status: string; // Added to match rules
+  visibility: string; // Added to match rules
 };
 
 const PAGE_SIZE = 10;
@@ -75,7 +78,15 @@ export default function StoriesFeed() {
 
   const loadPage = useCallback(async (direction: "init" | "next" | "prev") => {
     setLoading(true);
-    let q = query(collection(db, "stories"), orderBy("createdAt", "desc"));
+    
+    // FIX: Filter by status and visibility to match Firestore Rules
+    let q = query(
+      collection(db, "stories"), 
+      where("status", "==", "published"),
+      where("visibility", "==", "public"),
+      orderBy("createdAt", "desc")
+    );
+
     let snap;
 
     try {
@@ -92,7 +103,6 @@ export default function StoriesFeed() {
       const docs = snap.docs;
       const hasMore = docs.length > PAGE_SIZE;
       
-      // Process items (filtering out unpublished if necessary, though ideally done in Query)
       const mapped = docs.slice(0, PAGE_SIZE).map((d) => ({
         id: d.id,
         ...d.data(),
@@ -127,7 +137,7 @@ export default function StoriesFeed() {
 
   useEffect(() => {
     loadPage("init");
-  }, []);
+  }, []); // Run once on mount
 
   return (
     <>
@@ -138,7 +148,6 @@ export default function StoriesFeed() {
 
       <section className="section pb-20">
         <div className="container-page max-w-5xl">
-          {/* Header */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
             <div>
               <h1 className="text-4xl font-black text-white italic uppercase tracking-tighter">Stories</h1>
@@ -153,7 +162,6 @@ export default function StoriesFeed() {
             </Link>
           </div>
 
-          {/* Feed */}
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {loading ? (
               Array.from({ length: 6 }).map((_, i) => <SkeletonStoryCard key={i} />)
@@ -210,7 +218,6 @@ export default function StoriesFeed() {
             )}
           </ul>
 
-          {/* Pagination */}
           <div className="mt-12 flex items-center justify-center gap-6">
             <button
               disabled={page === 0 || loading}
