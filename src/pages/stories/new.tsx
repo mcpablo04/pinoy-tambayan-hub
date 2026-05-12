@@ -196,7 +196,7 @@ export default function NewStory() {
             </div>
 
             <div>
-              <label className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2 block flex items-center gap-2">
+              <label className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
                 <Tag size={14} /> Tags (Comma separated)
               </label>
               <input
