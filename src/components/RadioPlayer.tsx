@@ -1,8 +1,12 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-import { Play, Pause, Volume2, Radio, AlertCircle } from "lucide-react";
+import { useRef, useState, useEffect, useCallback } from "react";
+import { Play, Pause, Volume2, VolumeX, Radio, Wifi, WifiOff } from "lucide-react";
+import Image from "next/image";
 
+/* ============================================================
+   TYPES
+   ============================================================ */
 export interface Station {
   id: string;
   name: string;
@@ -15,161 +19,277 @@ export interface RadioPlayerProps {
   hideTitle?: boolean;
 }
 
-const VOL_KEY = "pth_volume";
-const AUTOPLAY_KEY = "pth_autoplay_on_load";
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+const VOL_KEY        = "pth_volume";
+const AUTOPLAY_KEY   = "pth_autoplay_on_load";
+const SCROLL_THRESHOLD = 200;
 
-export default function RadioPlayer({
-  station,
-  hideTitle = false,
-}: RadioPlayerProps) {
+/* ============================================================
+   COMPONENT
+   ============================================================ */
+export default function RadioPlayer({ station, hideTitle = false }: RadioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+
+  const [playing,    setPlaying]    = useState(false);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
   const [isFloating, setIsFloating] = useState(false);
+  const [muted,      setMuted]      = useState(false);
 
   const [volume, setVolume] = useState<number>(() => {
-    if (typeof window === "undefined") return 0.5;
-    const saved = window.localStorage.getItem(VOL_KEY);
-    return saved ? Math.min(1, Math.max(0, Number(saved))) : 0.5;
+    if (typeof window === "undefined") return 0.8;
+    const saved = localStorage.getItem(VOL_KEY);
+    return saved ? Math.min(1, Math.max(0, Number(saved))) : 0.8;
   });
 
-  // Handle Scroll to toggle Floating State
+  /* ----------------------------------------------------------
+     SCROLL → floating mode
+  ---------------------------------------------------------- */
   useEffect(() => {
-    const handleScroll = () => setIsFloating(window.scrollY > 200);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    const onScroll = () => setIsFloating(window.scrollY > SCROLL_THRESHOLD);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Sync Volume
+  /* ----------------------------------------------------------
+     SYNC VOLUME to audio element + localStorage
+  ---------------------------------------------------------- */
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
-    localStorage.setItem(VOL_KEY, String(volume));
-  }, [volume]);
-
-  const togglePlay = async () => {
     const a = audioRef.current;
     if (!a) return;
+    a.volume = muted ? 0 : volume;
+    localStorage.setItem(VOL_KEY, String(volume));
+  }, [volume, muted]);
+
+  /* ----------------------------------------------------------
+     TOGGLE PLAY / PAUSE
+  ---------------------------------------------------------- */
+  const togglePlay = useCallback(async () => {
+    const a = audioRef.current;
+    if (!a || loading) return;
 
     if (playing) {
       a.pause();
       setPlaying(false);
       localStorage.setItem(AUTOPLAY_KEY, "0");
-    } else {
-      setLoading(true);
-      setErr(null);
-      try {
-        const currentSrc = a.src;
-        a.src = ""; 
-        a.src = currentSrc || station.url;
-        await a.play();
-        setPlaying(true);
-        localStorage.setItem(AUTOPLAY_KEY, "1");
-      } catch (e) {
-        setErr("Tap to play");
-      } finally {
-        setLoading(false);
-      }
+      return;
     }
-  };
 
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Reset src to force reload — fixes stale stream issue
+      a.src = "";
+      a.src = station.url;
+      a.volume = muted ? 0 : volume;
+      await a.play();
+      setPlaying(true);
+      localStorage.setItem(AUTOPLAY_KEY, "1");
+    } catch {
+      setError("Stream unavailable");
+      setPlaying(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [playing, loading, station.url, volume, muted]);
+
+  /* ----------------------------------------------------------
+     STATION CHANGE → reload and auto-play if was playing
+  ---------------------------------------------------------- */
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    setPlaying(false);
-    setErr(null);
+
+    a.pause();
     a.src = station.url;
-    if (localStorage.getItem(AUTOPLAY_KEY) === "1") togglePlay();
+    setPlaying(false);
+    setError(null);
+
+    if (localStorage.getItem(AUTOPLAY_KEY) === "1") {
+      // Small delay so the src change settles
+      setTimeout(() => togglePlay(), 100);
+    }
   }, [station.id]);
 
-  return (
-    <div 
-      className={`
-        fixed transition-all duration-500 z-[1000] flex items-center shadow-2xl
-        ${isFloating 
-          ? "bottom-8 right-8 w-20 h-20 rounded-[2rem] bg-blue-600 justify-center cursor-pointer hover:scale-110 active:scale-95 border-4 border-white/20" 
-          : "bottom-8 left-1/2 -translate-x-1/2 w-[92%] max-w-md rounded-[2.5rem] bg-[#020617]/90 backdrop-blur-2xl border border-white/10 p-3 justify-between"
-        }
-        /* 🚀 THE FIX: These lines kill the "white box" ghosting */
-        overflow-hidden
-        isolation-isolate
-        [clip-path:inset(0_round_2rem)]
-        transform-gpu
-      `}
-      onClick={() => isFloating && togglePlay()}
-    >
-      {/* 1. MAIN ACTION BUTTON */}
-      <button 
-        onClick={(e) => {
-          if (isFloating) e.stopPropagation();
-          togglePlay();
-        }}
-        className={`relative flex items-center justify-center transition-all duration-300 shrink-0 overflow-hidden text-white ${
-          isFloating ? "w-full h-full" : "w-14 h-14 bg-blue-600 rounded-[1.25rem] hover:bg-blue-500 active:scale-90 shadow-lg shadow-blue-600/20"
-        }`}
-      >
-        {loading ? (
-          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-        ) : playing ? (
-          <Pause size={isFloating ? 32 : 24} fill="currentColor" className="relative z-10" />
-        ) : (
-          <Play size={isFloating ? 32 : 24} fill="currentColor" className={`relative z-10 ${!isFloating && "ml-1"}`} />
+  /* ----------------------------------------------------------
+     AUDIO EVENT HANDLERS
+  ---------------------------------------------------------- */
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+
+    const onError = () => {
+      setError("Stream error");
+      setPlaying(false);
+      setLoading(false);
+    };
+    const onStalled = () => setLoading(true);
+    const onPlaying = () => { setLoading(false); setError(null); };
+
+    a.addEventListener("error",   onError);
+    a.addEventListener("stalled", onStalled);
+    a.addEventListener("playing", onPlaying);
+
+    return () => {
+      a.removeEventListener("error",   onError);
+      a.removeEventListener("stalled", onStalled);
+      a.removeEventListener("playing", onPlaying);
+    };
+  }, []);
+
+  /* ----------------------------------------------------------
+     RENDER — FLOATING (mini pill)
+  ---------------------------------------------------------- */
+  if (isFloating) {
+    return (
+      <div className="fixed bottom-6 right-6 z-[1000]">
+        {/* Glow */}
+        {playing && (
+          <div className="absolute inset-0 bg-blue-500/30 blur-2xl rounded-full animate-pulse pointer-events-none" />
         )}
+        <button
+          onClick={togglePlay}
+          aria-label={playing ? "Pause" : "Play"}
+          className={`
+            relative w-16 h-16 rounded-2xl flex items-center justify-center
+            shadow-2xl shadow-black/50 transition-all duration-300
+            active:scale-90 overflow-hidden isolation-isolate
+            ${playing ? "bg-blue-600 hover:bg-blue-500" : "bg-slate-800 hover:bg-slate-700 border border-white/10"}
+          `}
+        >
+          {loading ? (
+            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : playing ? (
+            <Pause size={24} fill="currentColor" className="text-white" />
+          ) : (
+            <Play size={24} fill="currentColor" className="text-white ml-0.5" />
+          )}
+          {playing && (
+            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
+          )}
+        </button>
+        {/* Ping ring when playing */}
+        {playing && (
+          <div className="absolute -inset-1 rounded-3xl border border-blue-400/40 animate-ping pointer-events-none" />
+        )}
+      </div>
+    );
+  }
 
-        {/* Pulsing overlay inside the button */}
-        {playing && <div className="absolute inset-0 bg-white/10 animate-pulse z-0 pointer-events-none" />}
-      </button>
+  /* ----------------------------------------------------------
+     RENDER — FULL BAR
+  ---------------------------------------------------------- */
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-[92%] max-w-lg">
+      <div className="
+        relative flex items-center gap-4 px-4 py-3
+        bg-slate-900/80 backdrop-blur-2xl
+        border border-white/10 rounded-[2rem]
+        shadow-2xl shadow-black/60
+        overflow-hidden isolation-isolate
+      ">
+        {/* Subtle gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 to-transparent pointer-events-none" />
 
-      {/* 2. FULL BAR CONTENT (Only visible when NOT floating) */}
-      {!isFloating && (
-        <div className="flex-1 ml-4 flex items-center justify-between gap-4 overflow-hidden animate-in fade-in duration-500">
-          <div className="flex items-center gap-3 min-w-0">
+        {/* Play / Pause button */}
+        <button
+          onClick={togglePlay}
+          aria-label={playing ? "Pause" : "Play"}
+          className={`
+            relative shrink-0 w-12 h-12 rounded-[1.25rem] flex items-center justify-center
+            shadow-lg transition-all duration-300 active:scale-90 overflow-hidden
+            ${playing
+              ? "bg-blue-600 hover:bg-blue-500 shadow-blue-600/30"
+              : "bg-white/10 hover:bg-white/20"
+            }
+          `}
+        >
+          {loading ? (
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : playing ? (
+            <Pause size={20} fill="currentColor" className="text-white" />
+          ) : (
+            <Play size={20} fill="currentColor" className="text-white ml-0.5" />
+          )}
+        </button>
+
+        {/* Station info */}
+        {!hideTitle && (
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             {station.logo && (
-              <img src={station.logo} alt="" className="w-10 h-10 rounded-xl object-cover bg-white/5 border border-white/5" />
+              <div className="relative w-9 h-9 shrink-0 rounded-xl overflow-hidden bg-white/5 border border-white/10">
+                <Image
+                  src={station.logo}
+                  alt={station.name}
+                  fill
+                  sizes="36px"
+                  className="object-cover"
+                />
+              </div>
             )}
             <div className="min-w-0">
-              <h2 className="text-white text-sm font-black uppercase italic truncate tracking-tight leading-tight">
+              <p className="text-white text-xs font-black uppercase tracking-tight truncate">
                 {station.name}
-              </h2>
-              <div className="flex items-center gap-2 mt-0.5">
-                {playing && (
-                   <div className="flex gap-0.5 items-end h-2 w-3">
-                    <div className="w-0.5 bg-blue-500 animate-[music-bar_1s_infinite_0.1s]" />
-                    <div className="w-0.5 bg-blue-500 animate-[music-bar_1s_infinite_0.3s]" />
-                    <div className="w-0.5 bg-blue-500 animate-[music-bar_1s_infinite_0.2s]" />
+              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {/* Live bars animation */}
+                {playing && !error && (
+                  <div className="flex gap-px items-end h-3">
+                    {[0.1, 0.3, 0.2, 0.4, 0.15].map((delay, i) => (
+                      <div
+                        key={i}
+                        className="w-px bg-blue-400 rounded-full animate-bounce"
+                        style={{
+                          height: `${[8, 12, 6, 10, 7][i]}px`,
+                          animationDelay: `${delay}s`,
+                          animationDuration: "0.8s",
+                        }}
+                      />
+                    ))}
                   </div>
                 )}
-                <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">
-                  {err ? "Stream Offline" : playing ? "Live Now" : "Station Standby"}
-                </p>
+                <span className={`text-[9px] font-black uppercase tracking-widest ${
+                  error ? "text-red-400" : playing ? "text-blue-400" : "text-slate-500"
+                }`}>
+                  {error ? "Offline" : playing ? "Live" : "Standby"}
+                </span>
               </div>
             </div>
           </div>
+        )}
 
-          <div className="flex items-center gap-3 bg-white/5 px-3 py-2 rounded-2xl border border-white/5">
-            <Volume2 className="w-3.5 h-3.5 text-slate-500" />
-            <input
-              type="range" min={0} max={1} step={0.01}
-              value={volume}
-              onChange={(e) => setVolume(Number(e.target.value))}
-              className="w-16 accent-blue-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
-            />
-          </div>
+        {/* Volume controls */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setMuted(m => !m)}
+            aria-label={muted ? "Unmute" : "Mute"}
+            className="text-slate-400 hover:text-white transition-colors"
+          >
+            {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          </button>
+          <input
+            type="range"
+            min={0} max={1} step={0.01}
+            value={muted ? 0 : volume}
+            onChange={(e) => {
+              setVolume(Number(e.target.value));
+              setMuted(false);
+            }}
+            aria-label="Volume"
+            className="w-20 accent-blue-500 h-1 cursor-pointer"
+          />
         </div>
-      )}
 
-      {/* 3. FLOATING EXTRAS */}
-      {isFloating && (
-        <>
-          {/* Animated Ping Ring */}
-          <div className="absolute -inset-[2px] rounded-[2rem] border-2 border-blue-400/50 animate-ping pointer-events-none" />
-          
-          {/* Bottom Radio Icon */}
-          <Radio size={12} className="absolute bottom-2 text-white/50" />
-        </>
-      )}
+        {/* Stream status icon */}
+        <div className={`shrink-0 ${error ? "text-red-400" : playing ? "text-green-400" : "text-slate-600"}`}>
+          {error ? <WifiOff size={14} /> : <Wifi size={14} />}
+        </div>
+      </div>
 
-      {/* HIDDEN AUDIO ELEMENT */}
+      {/* Hidden audio element */}
       <audio ref={audioRef} preload="none" crossOrigin="anonymous" playsInline />
     </div>
   );
