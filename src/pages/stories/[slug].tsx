@@ -10,6 +10,38 @@ import ReactionBar, { type Notify as ReactionNotify, type NotifyKind as Reaction
 import Comments from "../../components/Comments";
 import { useAuth } from "../../context/AuthContext";
 
+/* ---- Constants & Logic Helpers ---- */
+const SITE_URL = "https://pinoytambayanhub.com";
+
+const getIdFromSlug = (slugOrId: string | string[] | undefined): string | null => {
+  if (!slugOrId || Array.isArray(slugOrId)) return null;
+  const parts = slugOrId.split("-");
+  return parts.length > 1 ? parts[parts.length - 1] : slugOrId;
+};
+
+const convertTimestamp = (ts: any): Date | null => {
+  if (!ts) return null;
+  if (typeof ts.toDate === "function") return ts.toDate();
+  if (ts.seconds) return new Date(ts.seconds * 1000);
+  return null;
+};
+
+const fmtDate = (ts?: Timestamp) => {
+  const d = convertTimestamp(ts);
+  return d ? d.toISOString() : "";
+};
+
+const fmtDatePretty = (ts?: Timestamp) => {
+  const d = convertTimestamp(ts);
+  return d ? d.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" }) : "";
+};
+
+function makeDescription(body?: string, max = 160) {
+  if (!body) return "Read a community-written Pinoy story on Pinoy Tambayan Hub.";
+  const text = body.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  return text.length > max ? text.slice(0, max - 1) + "…" : text;
+}
+
 /* ---- Toast + Confirm Components ---- */
 type ToastKind = ReactionNotifyKind;
 type ToastItem = { id: number; kind: ToastKind; text: string };
@@ -70,10 +102,10 @@ function ConfirmDialog({ state, setState }: { state: ConfirmState; setState: (s:
   );
 }
 
-const askConfirm = (setState: (s: ConfirmState) => void, opts: Omit<ConfirmState, "open" | "resolve">) =>
+const askConfirm = (setState: React.Dispatch<React.SetStateAction<ConfirmState>>, opts: Omit<ConfirmState, "open" | "resolve">) =>
   new Promise<boolean>((resolve) => setState({ ...opts, open: true, resolve }));
 
-/* ---- Logic Helpers ---- */
+/* ---- Main Component ---- */
 type StoryDoc = {
   title: string;
   authorId: string;
@@ -86,31 +118,10 @@ type StoryDoc = {
   updatedAt?: Timestamp;
 };
 
-const SITE_URL = "https://pinoytambayanhub.com";
-const getIdFromSlug = (slugOrId: string) => slugOrId.split("-").pop() as string;
-
-const fmtDate = (ts?: Timestamp) => {
-  if (!ts) return "";
-  const d = (ts as any).toDate ? (ts as any).toDate() : new Date((ts as any).seconds * 1000);
-  return d.toISOString();
-};
-
-const fmtDatePretty = (ts?: Timestamp) => {
-  if (!ts) return "";
-  const d = (ts as any).toDate ? (ts as any).toDate() : new Date((ts as any).seconds * 1000);
-  return d.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
-};
-
-function makeDescription(body?: string, max = 160) {
-  if (!body) return "Read a community-written Pinoy story on Pinoy Tambayan Hub.";
-  const text = body.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
-  return text.length > max ? text.slice(0, max - 1) + "…" : text;
-}
-
 export default function StoryPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { slug } = router.query as { slug?: string };
+  const { slug } = router.query;
 
   const [story, setStory] = useState<StoryDoc | null>(null);
   const [id, setId] = useState<string | null>(null);
@@ -124,12 +135,11 @@ export default function StoryPage() {
     setToasts((prev) => [...prev, { id: Date.now() + Math.random(), kind, text }]);
   const popToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
-  // Calculate Read Time (Avg 200 words per minute)
   const readTime = useMemo(() => {
-    if (!story?.content.body) return 0;
+    if (!story?.content?.body) return 0;
     const words = story.content.body.trim().split(/\s+/).length;
     return Math.ceil(words / 200);
-  }, [story?.content.body]);
+  }, [story?.content?.body]);
 
   const scrollToTopSafe = useCallback(() => {
     const navH = window.innerWidth >= 768 ? 96 : 80;
@@ -140,6 +150,7 @@ export default function StoryPage() {
   useEffect(() => {
     if (!slug) return;
     const _id = getIdFromSlug(slug);
+    if (!_id) return;
     setId(_id);
 
     (async () => {
@@ -150,12 +161,15 @@ export default function StoryPage() {
         if (!snap.exists()) {
           setStory(null);
         } else {
-          setStory(snap.data() as StoryDoc);
-          // Increment views
+          const data = snap.data() as StoryDoc;
+          setStory(data);
+          
           const key = `read:${_id}`;
           if (!sessionStorage.getItem(key)) {
             sessionStorage.setItem(key, "1");
-            updateDoc(ref, { "counts.reads": increment(1) }).catch(() => {});
+            updateDoc(ref, { 
+              "counts.reads": increment(1)
+            }).catch(() => {});
           }
         }
       } catch (err) {
@@ -185,7 +199,6 @@ export default function StoryPage() {
     }
   }, [id, story, user, router]);
 
-  // SEO
   const canonicalUrl = `${SITE_URL}/stories/${slug}`;
   const metaTitle = story?.title ? `${story.title} | Pinoy Tambayan Hub` : "Story";
   const metaDesc = makeDescription(story?.content?.body);
@@ -221,7 +234,7 @@ export default function StoryPage() {
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:image" content={`${SITE_URL}/brand/og-cover.png`} />
         <meta name="twitter:card" content="summary_large_image" />
-        {fmtDate(story.createdAt) && <meta property="article:published_time" content={fmtDate(story.createdAt)} />}
+        {story.createdAt && <meta property="article:published_time" content={fmtDate(story.createdAt)} />}
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
           "@context": "https://schema.org",
           "@type": "Article",
@@ -238,12 +251,11 @@ export default function StoryPage() {
           <ToastViewport toasts={toasts} onClose={popToast} />
           <div ref={topRef} className="scroll-mt-32" />
 
-          {/* Header Actions */}
           <div className="mb-8 flex items-center justify-between">
             <Link href="/stories" className="group flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
               <span className="transition-transform group-hover:-translate-x-1">←</span> Back to Stories
             </Link>
-            {isOwner && (
+            {isOwner && id && (
               <div className="flex gap-2">
                 <Link href={`/stories/edit/${id}`} className="px-4 py-1.5 rounded-xl border border-white/10 text-sm hover:bg-white/5">Edit</Link>
                 <button onClick={onDeleteStory} className="px-4 py-1.5 rounded-xl bg-red-600/10 text-red-500 text-sm hover:bg-red-600 hover:text-white transition-all">Delete</button>
@@ -251,7 +263,6 @@ export default function StoryPage() {
             )}
           </div>
 
-          {/* Title Section */}
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-[1.1] tracking-tight mb-4">
             {story.title}
           </h1>
@@ -265,14 +276,12 @@ export default function StoryPage() {
             <span className="bg-white/5 px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider">{readTime} min read</span>
           </div>
 
-          {/* Story Body */}
           <div className="prose prose-invert max-w-none">
             <p className="whitespace-pre-wrap leading-[1.8] text-[17px] text-gray-200 antialiased selection:bg-blue-500/30">
               {story.content.body}
             </p>
           </div>
 
-          {/* Tags */}
           {story.tags && story.tags.length > 0 && (
             <div className="mt-12 flex flex-wrap gap-2">
               {story.tags.map(t => (
@@ -282,11 +291,11 @@ export default function StoryPage() {
           )}
 
           <div className="mt-16 pt-8 border-t border-white/5">
-            <ReactionBar storyId={id!} notify={pushToast} />
+            {id && <ReactionBar storyId={id} notify={pushToast} />}
           </div>
 
           <div className="mt-12">
-            <Comments storyId={id!} initialBatch={5} enableDelete notify={pushToast} />
+            {id && <Comments storyId={id} initialBatch={5} enableDelete notify={pushToast} />}
           </div>
         </article>
       </section>

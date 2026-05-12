@@ -11,8 +11,10 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
-import { useAuth, type Profile } from "../../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 import { PenLine, Tag, Trash2, Send, XCircle, Info } from "lucide-react";
+
+const MAX_BODY_LENGTH = 50000;
 
 const slugify = (s: string) =>
   s
@@ -32,8 +34,10 @@ export default function NewStory() {
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isMounted, setIsMounted] = useState(false); // To prevent hydration flicker
 
   useEffect(() => {
+    setIsMounted(true);
     window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
@@ -41,6 +45,7 @@ export default function NewStory() {
 
   // Load Draft
   useEffect(() => {
+    if (!isMounted) return;
     try {
       const raw = localStorage.getItem(draftKey);
       if (raw) {
@@ -52,17 +57,18 @@ export default function NewStory() {
     } catch (e) {
       console.error("Draft load failed", e);
     }
-  }, [draftKey]);
+  }, [draftKey, isMounted]);
 
-  // Save Draft
+  // Save Draft (Debounced)
   useEffect(() => {
+    if (!isMounted) return;
     const timeout = setTimeout(() => {
       try {
         localStorage.setItem(draftKey, JSON.stringify({ title, tags, body }));
       } catch (e) {}
-    }, 1000); // Debounced save
+    }, 1000);
     return () => clearTimeout(timeout);
-  }, [title, tags, body, draftKey]);
+  }, [title, tags, body, draftKey, isMounted]);
 
   const liveTagList = useMemo(() => {
     return Array.from(
@@ -88,28 +94,30 @@ export default function NewStory() {
       return;
     }
 
-    // Validation to match your Rule 'short' function (size > 0 and < max)
     if (title.trim().length < 3) {
-      setError("Title is too short.");
+      setError("Title is too short (min 3 chars).");
       return;
     }
     if (body.trim().length < 10) {
-      setError("Story body is too short.");
+      setError("Story body is too short (min 10 chars).");
       return;
     }
 
     setSaving(true);
 
     try {
-      // 1. Construct payload to match Firestore 'hasOnly' keys exactly
+      // Logic for fallback author names
+      const finalAuthorName = profile?.displayName || user.displayName || "Anonymous User";
+      const finalAuthorHandle = profile?.handle || null;
+
       const payload = {
         authorId: user.uid,
-        authorName: profile?.displayName ?? user.displayName ?? "Anonymous",
-        authorHandle: profile?.handle ?? null,
+        authorName: finalAuthorName,
+        authorHandle: finalAuthorHandle,
         title: title.trim(),
-        slug: "draft-slug", // Placeholder: size > 0 to pass 'short' rule
+        slug: `temp-${Date.now()}`, 
         tags: liveTagList,
-        coverUrl: null, // Explicitly required by your hasOnly rule
+        coverUrl: null, 
         content: {
           type: "single",
           body: body.trim(),
@@ -125,26 +133,26 @@ export default function NewStory() {
         updatedAt: serverTimestamp(),
       };
 
-      // Step 1: Create the document
       const ref = await addDoc(collection(db, "stories"), payload);
 
-      // Step 2: Update with the final unique slug
+      // Generate the permanent slug with the unique ID
       const finalSlug = `${slugify(title)}-${ref.id}`;
       await updateDoc(doc(db, "stories", ref.id), {
         slug: finalSlug,
         updatedAt: serverTimestamp(),
       });
 
-      // Cleanup
       localStorage.removeItem(draftKey);
       router.push(`/stories/${finalSlug}`);
     } catch (err: any) {
       console.error("Submission error:", err);
-      // Handles permission-denied or network errors
-      setError(err?.message ?? "Failed to publish. Please check your connection.");
+      setError(err?.message || "Failed to publish. Please check your connection.");
       setSaving(false);
     }
   };
+
+  // Prevent rendering content that depends on localStorage until mounted
+  if (!isMounted) return null;
 
   return (
     <>
@@ -165,14 +173,13 @@ export default function NewStory() {
           </header>
 
           {error && (
-            <div className="mb-6 flex items-center gap-3 bg-red-500/10 border border-red-500/20 text-red-200 px-4 py-3 rounded-2xl animate-in fade-in slide-in-from-top-2">
-              <XCircle size={18} />
+            <div className="mb-6 flex items-center gap-3 bg-red-500/10 border border-red-500/20 text-red-200 px-4 py-3 rounded-2xl">
+              <XCircle size={18} className="shrink-0" />
               <p className="text-sm font-medium">{error}</p>
             </div>
           )}
 
           <form onSubmit={onSubmit} className="space-y-6">
-            {/* Title Input */}
             <div className="group">
               <label className="text-xs font-black uppercase tracking-widest text-gray-500 group-focus-within:text-blue-500 transition-colors mb-2 block">
                 Story Title
@@ -188,7 +195,6 @@ export default function NewStory() {
               />
             </div>
 
-            {/* Tags Input */}
             <div>
               <label className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2 block flex items-center gap-2">
                 <Tag size={14} /> Tags (Comma separated)
@@ -197,27 +203,22 @@ export default function NewStory() {
                 type="text"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
-                placeholder="romance, drama, one-shot..."
+                placeholder="romance, drama, horror..."
                 className="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-3 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
               />
               <div className="mt-3 flex flex-wrap gap-2 min-h-[32px]">
-                {liveTagList.map((t) => (
-                  <span
-                    key={t}
-                    className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-bold border border-blue-500/20"
-                  >
-                    #{t}
-                  </span>
-                ))}
-                {liveTagList.length === 0 && (
-                  <span className="text-xs text-gray-600 italic">
-                    No tags added yet...
-                  </span>
+                {liveTagList.length > 0 ? (
+                  liveTagList.map((t) => (
+                    <span key={t} className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-bold border border-blue-500/20">
+                      #{t}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-gray-600 italic">No tags added yet...</span>
                 )}
               </div>
             </div>
 
-            {/* Body Editor */}
             <div className="relative">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-black uppercase tracking-widest text-gray-500">
@@ -225,7 +226,7 @@ export default function NewStory() {
                 </label>
                 <div className="flex items-center gap-4">
                   <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold bg-white/5 px-2 py-0.5 rounded">
-                    {wordCount} words
+                    {wordCount.toLocaleString()} words
                   </span>
                 </div>
               </div>
@@ -234,15 +235,14 @@ export default function NewStory() {
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="Once upon a time in Manila..."
-                className="w-full min-h-[450px] bg-white/[0.03] border border-white/10 rounded-3xl px-6 py-6 text-lg leading-relaxed text-gray-200 placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all resize-none"
+                className="w-full min-h-[500px] bg-white/[0.03] border border-white/10 rounded-3xl px-6 py-6 text-lg leading-relaxed text-gray-200 placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all resize-none"
                 required
               />
-              <div className="absolute bottom-4 right-6 text-[10px] text-gray-600 font-bold uppercase tracking-widest pointer-events-none">
-                {body.length.toLocaleString()} / 50,000
+              <div className={`absolute bottom-4 right-6 text-[10px] font-bold uppercase tracking-widest pointer-events-none ${body.length > MAX_BODY_LENGTH ? "text-red-500" : "text-gray-600"}`}>
+                {body.length.toLocaleString()} / {MAX_BODY_LENGTH.toLocaleString()}
               </div>
             </div>
 
-            {/* Bottom Actions */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-6 border-t border-white/5">
               <div className="flex items-center gap-2 text-gray-500 text-xs italic">
                 <Info size={14} />
@@ -262,18 +262,16 @@ export default function NewStory() {
                   }}
                   className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-2xl border border-white/10 text-gray-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-all"
                 >
-                  <Trash2 size={18} />{" "}
-                  <span className="md:hidden lg:inline">Clear</span>
+                  <Trash2 size={18} />
+                  <span>Clear</span>
                 </button>
 
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || body.length > MAX_BODY_LENGTH}
                   className="flex-[2] md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-10 py-3 rounded-2xl font-black uppercase tracking-tighter transition-all hover:scale-105 active:scale-95 disabled:opacity-50 shadow-xl shadow-blue-600/20"
                 >
-                  {saving ? (
-                    "Publishing..."
-                  ) : (
+                  {saving ? "Publishing..." : (
                     <>
                       <Send size={18} /> Publish Story
                     </>
